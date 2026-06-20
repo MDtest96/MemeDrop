@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>MemeDrop QuickLauncher</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <div id="toast-container"></div>
+    
+    <div id="layout">
+        <!-- Sidebar -->
+        <div id="side-panel">
+            <div id="conn-status" class="conn-badge">● Déconnecté</div>
+            <div id="meme-count">0 memes</div>
+            
+            <div class="sidebar-section">
+                <h3>Tags</h3>
+                <ul id="tag-list"></ul>
+                <input type="text" id="tag-input" placeholder="Nouveau tag...">
+                <button id="btn-tag-add">Ajouter</button>
+            </div>
+            
+            <div class="sidebar-section">
+                <h3>Favoris</h3>
+                <ul id="favorites-list"></ul>
+            </div>
+            
+            <div class="sidebar-section">
+                <h3>Audio / Soundboard</h3>
+                <select id="audio-library"></select>
+                <ul id="soundboard-list"></ul>
+                <button id="btn-soundboard-add">Lier Audio</button>
+            </div>
+            
+            <div class="sidebar-section">
+                <h3>Historique & Streaks</h3>
+                <div id="streak-counter">🔥 Streak: 0</div>
+                <ul id="history-list"></ul>
+                <ul id="scheduled-list"></ul>
+            </div>
+            
+            <div class="sidebar-section">
+                <h3>Groupes</h3>
+                <select id="group-select"></select>
+                <button id="btn-save-group">Sauver Groupe</button>
+                <button id="btn-drop-group">Drop Groupe</button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div id="main-content">
+            <div class="top-bar">
+                <input type="text" id="search" placeholder="Rechercher...">
+            </div>
+            
+            <div id="dropzone" class="hidden">Glissez vos memes ici</div>
+            
+            <div class="studio-tabs-container">
+                <div class="studio-tabs">
+                    <button class="studio-tab active" data-tab="grid">Grid</button>
+                    <button class="studio-tab" data-tab="studio">Studio</button>
+                    <button class="studio-tab" data-tab="giphy">GIF Search</button>
+                    <button class="studio-tab" data-tab="weblink">🔗 Lien Web</button>
+                    <button class="studio-tab" data-tab="roulette">Roulette</button>
+                </div>
+                
+                <!-- Grid Tab -->
+                <div id="tab-grid" class="tab-content">
+                    <div id="grid-empty" class="hidden">Aucun meme</div>
+                    <div id="grid"></div>
+                </div>
+                
+                <!-- Studio Tab -->
+                <div id="tab-studio" class="tab-content hidden">
+                    <select id="studio-template"></select>
+                    <input type="text" id="studio-top-text" placeholder="Texte Haut">
+                    <input type="text" id="studio-bottom-text" placeholder="Texte Bas">
+                    <img id="studio-preview" src="">
+                    <button id="btn-studio-generate">Générer</button>
+                </div>
+                
+                <!-- Giphy Tab -->
+                <div id="tab-giphy" class="tab-content hidden">
+                    <input type="text" id="giphy-search" placeholder="Rechercher GIF">
+                    <button id="btn-giphy-search">Chercher</button>
+                    <button id="btn-giphy-trending">Trending</button>
+                    <div id="giphy-grid"></div>
+                </div>
+                
+                <!-- Lien Web Tab -->
+                <div id="tab-weblink" class="tab-content hidden">
+                    <h3>Envoyer un lien Web (Vidéo, GIF...)</h3>
+                    <input type="text" id="weblink-url" placeholder="URL directe (ex: .mp4, .gif)">
+                    <input type="text" id="weblink-target" placeholder="Cible (@pseudo, salon...)">
+                    <input type="text" id="weblink-caption" placeholder="Légende (optionnel)">
+                    <label><input type="checkbox" id="weblink-rain"> Mode Pluie</label>
+                    <button id="btn-weblink-send">Envoyer le lien</button>
+                </div>
+
+                <!-- Roulette Tab -->
+                <div id="tab-roulette" class="tab-content hidden">
+                    <button id="btn-roulette-spin">Tourner la roulette</button>
+                    <div id="roulette-meme"></div>
+                    <input type="text" id="roulette-target" placeholder="Cible (@pseudo)">
+                    <button id="btn-roulette-send">Drop aléatoire</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Drop Panel -->
+        <div id="drop-panel" class="hidden">
+            <img id="panel-preview">
+            <div id="panel-name"></div>
+            <div id="panel-meta"></div>
+            
+            <input type="text" id="panel-target" placeholder="Cible" list="target-suggestions">
+            <datalist id="target-suggestions"></datalist>
+            
+            <input type="text" id="panel-caption" placeholder="Légende">
+            
+            <select id="panel-audio-select"></select>
+            <input type="range" id="panel-volume" min="0" max="100" value="100">
+            
+            <label><input type="checkbox" id="panel-rain"> Mode Pluie</label>
+            <button id="btn-send-drop">Envoyer</button>
+            <button id="btn-panel-close">Fermer</button>
+            <div id="panel-status"></div>
+        </div>
+    </div>
+
+    <!-- The app logic handles adding the event listener to weblink UI -->
+    <script src="./app.js" type="module"></script>
+    <script>
+      // Quick logic for weblink that we add directly here
+      document.addEventListener("DOMContentLoaded", () => {
+         const btnWebLinkSend = document.getElementById("btn-weblink-send");
+         if (btnWebLinkSend) {
+           btnWebLinkSend.addEventListener("click", async () => {
+             const target = document.getElementById("weblink-target").value;
+             const url = document.getElementById("weblink-url").value;
+             const caption = document.getElementById("weblink-caption").value;
+             const rain = document.getElementById("weblink-rain").checked;
+             
+             if (!url || !target) {
+               alert("URL et Cible sont requis !");
+               return;
+             }
+             
+             btnWebLinkSend.textContent = "Envoi...";
+             btnWebLinkSend.disabled = true;
+             
+             try {
+                // Infer kind from url
+                let kind = "image";
+                if(url.includes(".mp4") || url.includes(".webm")) kind = "video";
+                if(url.includes(".gif")) kind = "gif";
+                
+                const res = await window.memedrop.sendDropUrl({ url, target, caption, rain, kind });
+                if(res.ok) alert("Lien envoyé !");
+                else alert("Erreur: " + res.error);
+             } catch(e) {
+                alert("Erreur");
+             }
+             
+             btnWebLinkSend.textContent = "Envoyer le lien";
+             btnWebLinkSend.disabled = false;
+           });
+         }
+      });
+    </script>
+</body>
+</html>

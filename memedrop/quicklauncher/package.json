@@ -1,0 +1,48 @@
+{
+  "name": "memedrop-quicklauncher",
+  "version": "1.0.0",
+  "description": "MemeDrop QuickLauncher — drop memes in 2 clicks",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "nodemon --watch . --ext js,html,css --exec \"electron .\"",
+    "build:win": "electron-builder --win portable",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.9",
+    "electron": "^33.4.11",
+    "electron-builder": "^24.13.3",
+    "jsdom": "^29.1.1",
+    "nodemon": "^3.1.14",
+    "vitest": "^4.1.9"
+  },
+  "build": {
+    "appId": "com.memedrop.quicklauncher",
+    "productName": "MemeDrop QuickLauncher",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "style.css",
+      "app.js"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "MemeDrop-QuickLauncher-${version}.${ext}"
+    }
+  }
+}
