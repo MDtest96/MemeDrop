@@ -1,6 +1,30 @@
-﻿// app.js — MemeDrop QuickLauncher renderer (Phases 2-7)
+// app.js — MemeDrop QuickLauncher renderer (Phases 2-7)
 
 // ── State ────────────────────────────────────────────────────────────────
+if (!window.memedrop) {
+  console.warn("Running outside Electron. Mocking window.memedrop");
+  window.memedrop = {
+    onConnection: () => () => {},
+    listMemes: async () => [],
+    getTags: async () => [],
+    getFavorites: async () => [],
+    getAudioLibrary: async () => [],
+    getHistory: async () => [],
+    getStreak: async () => null,
+    getGroups: async () => [],
+    getScheduled: async () => [],
+    getTemplates: async () => [],
+    getUsers: async () => [],
+    getSoundboard: async () => [],
+    searchGiphy: async () => [],
+    trendingGiphy: async () => [],
+    sendDropUrl: async () => ({ok: true}),
+    openMemeFolder: () => {},
+    onShortcut: () => () => {},
+    onLibraryChanged: () => () => {}
+  };
+}
+
 let allMemes = [];
 let currentFilter = "all";
 let currentQuery = "";
