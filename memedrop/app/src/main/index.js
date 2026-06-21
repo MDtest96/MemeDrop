@@ -917,7 +917,8 @@ ipcMain.handle("giphy:download", async (e, url) => {
   } catch (err) {
     console.error("Giphy download error:", err);
     return null;
-  });
+  }
+});
 
   // ── Generic URL download to memes folder ──────────────────────────────────
   ipcMain.handle("memes:downloadUrl", async (e, url) => {
