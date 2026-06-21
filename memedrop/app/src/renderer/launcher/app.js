@@ -1238,13 +1238,21 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
         kind: selectedMeme.kind,
       });
     } else if (selectedMeme.isCollage) {
-      result = await window.memedrop.sendDrop({
-        target,
-        filePaths: selectedMeme.collagePaths,
-        caption,
-        rain,
-        kind: "image",
-      });
+      // Send each file individually to preserve GIF animation / video
+      let sentCount = 0;
+      for (const fp of selectedMeme.collagePaths) {
+        const r = await window.memedrop.sendDrop({
+          target,
+          filePath: fp,
+          caption: null,
+          rain: null,
+          kind: "image",
+          volume,
+          showLocalPreview: false,
+        });
+        if (r && r.ok) sentCount++;
+      }
+      result = { ok: sentCount > 0, count: sentCount };
     } else {
       result = await window.memedrop.sendDrop({
         target,
@@ -1534,7 +1542,8 @@ async function loadGiphy(query, reset = true) {
     }
     const items = result.data || [];
     const total = result.pagination?.total_count || 0;
-    giphyHasMore = giphyOffset + GIPHY_LIMIT < total;
+    // Giphy trending API returns total_count=0, assume there's always more
+    giphyHasMore = total === 0 || giphyOffset + GIPHY_LIMIT < total;
 
     if (reset) {
       renderGiphyGrid(items);
