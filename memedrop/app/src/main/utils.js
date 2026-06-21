@@ -68,7 +68,9 @@ async function formatQuickDropPayload(payload) {
     caption: payload.caption,
     media,
     music,
-    volume: payload.volume !== undefined ? payload.volume : 1.0
+    volume: payload.volume !== undefined ? payload.volume : 1.0,
+    duration: payload.duration || undefined,
+    rain: payload.rain || undefined,
   };
 }
 

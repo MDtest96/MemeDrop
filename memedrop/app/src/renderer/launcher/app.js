@@ -80,6 +80,7 @@ let streakData = null;
 let groups = [];
 let currentSort = "name";
 let currentVolume = 100;
+let currentDuration = 4;
 let lastDropData = null;
 let isGiphyLoading = false;
 let searchTimeout = null;
@@ -914,6 +915,14 @@ panelVolume?.addEventListener("input", () => {
   currentVolume = parseInt(panelVolume.value, 10) || 100;
 });
 
+// Duration slider
+const panelDuration = document.getElementById("panel-duration");
+const panelDurationOut = document.getElementById("panel-duration-out");
+panelDuration?.addEventListener("input", () => {
+  currentDuration = parseInt(panelDuration.value, 10) || 4;
+  if (panelDurationOut) panelDurationOut.textContent = `${currentDuration}s`;
+});
+
 // ── Section H: History ─────────────────────────────────────────────────
 async function loadHistory() {
   try {
@@ -1001,10 +1010,14 @@ async function openDropPanel(meme) {
 
   // Load recent targets
   const targets = await window.memedrop.listTargets();
-  targetSuggestions.innerHTML = targets
-    .map((t) => `<option value="${t}">`)
-    .join("");
+  if (targetSuggestions) {
+    targetSuggestions.innerHTML = targets
+      .map((t) => `<option value="${t}">`)
+      .join("");
+  }
   panelTarget.selectedIndex = -1; // Deselect all in multi-select
+  const panelTargetAdd = document.getElementById("panel-target-add");
+  if (panelTargetAdd) panelTargetAdd.value = "";
   panelCaption.value = "";
   panelRain.value = "";
   panelStatus.textContent = "";
@@ -1055,6 +1068,8 @@ async function openDropPanel(meme) {
 
   // Section G: Reset volume slider
   if (panelVolume) panelVolume.value = currentVolume;
+  if (panelDuration) panelDuration.value = currentDuration;
+  if (panelDurationOut) panelDurationOut.textContent = `${currentDuration}s`;
 
   dropPanel.classList.remove("hidden");
 }
@@ -1154,6 +1169,7 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
         rain,
         kind: selectedMeme.kind,
         volume,
+        duration: currentDuration,
       });
     }
 
@@ -1523,6 +1539,46 @@ document.getElementById("btn-select-all-targets")?.addEventListener("click", () 
 document.getElementById("btn-clear-targets")?.addEventListener("click", () => {
   const sel = panelTarget;
   if (sel) sel.selectedIndex = -1;
+});
+
+// ── Custom targets ────────────────────────────────────────────────────────
+let customTargets = new Set();
+try {
+  const saved = JSON.parse(localStorage.getItem("memedrop_custom_targets") || "[]");
+  customTargets = new Set(saved);
+} catch {}
+
+function saveCustomTargets() {
+  localStorage.setItem("memedrop_custom_targets", JSON.stringify([...customTargets]));
+}
+
+// Add custom target
+const panelTargetAdd = document.getElementById("panel-target-add");
+const addTargetBtn = document.getElementById("btn-add-target");
+function addCustomTarget() {
+  if (!panelTargetAdd || !panelTarget) return;
+  const val = panelTargetAdd.value.trim();
+  if (!val) return;
+  customTargets.add(val);
+  saveCustomTargets();
+  // Check if already exists in select
+  const exists = Array.from(panelTarget.options).some(o => o.value === val);
+  if (exists) {
+    const opt = Array.from(panelTarget.options).find(o => o.value === val);
+    if (opt) opt.selected = true;
+    panelTargetAdd.value = "";
+    return;
+  }
+  const opt = document.createElement("option");
+  opt.value = val;
+  opt.textContent = val;
+  opt.selected = true;
+  panelTarget.appendChild(opt);
+  panelTargetAdd.value = "";
+}
+addTargetBtn?.addEventListener("click", addCustomTarget);
+panelTargetAdd?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") addCustomTarget();
 });
 
 btnSaveGroup?.addEventListener("click", async () => {
@@ -2223,25 +2279,26 @@ document.addEventListener("paste", async (e) => {
 async function loadUsers() {
   try {
     const users = await window.memedrop.getUsers();
-    if (users && users.length > 0) {
-      const suggestions = document.getElementById("target-suggestions");
-      if (suggestions) {
-        suggestions.innerHTML = "";
-        users.forEach((u) => {
-          const option = document.createElement("option");
-          option.value = "@" + u.username;
-          suggestions.appendChild(option);
-        });
-      }
-      // Populate multi-target select
-      if (panelTarget) {
-        panelTarget.innerHTML = "";
+    // Populate multi-target select: Discord users + custom targets
+    if (panelTarget) {
+      panelTarget.innerHTML = "";
+      if (users && users.length > 0) {
         users.forEach((u) => {
           const opt = document.createElement("option");
           opt.value = "@" + u.username;
           opt.textContent = "@" + u.username;
           panelTarget.appendChild(opt);
         });
+      }
+      // Add custom targets (persisted in localStorage)
+      for (const ct of customTargets) {
+        // Avoid duplicates with Discord users
+        if (!users || !users.some((u) => "@" + u.username === ct)) {
+          const opt = document.createElement("option");
+          opt.value = ct;
+          opt.textContent = ct;
+          panelTarget.appendChild(opt);
+        }
       }
     }
   } catch (e) {

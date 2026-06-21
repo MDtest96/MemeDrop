@@ -462,8 +462,8 @@ function connectWS() {
             volume: store.get("volume"),
             musicVolume: store.get("musicVolume"),
             opacity: store.get("opacity"),
-            duration: store.get("duration"),
-            videoDuration: store.get("videoDuration"),
+            duration: msg.duration || store.get("duration"),
+            videoDuration: msg.duration || store.get("videoDuration"),
             soundOnArrival: store.get("soundOnArrival"),
             spotlightOnDrop: store.get("spotlightOnDrop"),
           },
@@ -799,6 +799,8 @@ ipcMain.handle("drop:send", async (_e, payload) => {
       settings: {
         volume: store.get("volume"),
         musicVolume: store.get("musicVolume"),
+        duration: payload.duration || store.get("duration") || 4,
+        videoDuration: payload.duration || store.get("videoDuration") || 30,
       },
     });
     // ----------------------------------------
@@ -838,6 +840,32 @@ ipcMain.handle("drop:sendUrl", async (_e, payload) => {
     };
 
     ws.send(JSON.stringify(msg));
+
+    // Local playback for sendDropUrl
+    const localDrop = {
+      type: "drop",
+      media: {
+        url: resolved.url || url,
+        kind: resolvedKind || resolved.kind,
+        mime: resolved.mime || media.mime,
+      },
+      caption: caption || null,
+      rain: rain || null,
+      from: { id: "me", username: "Moi" },
+      ts: Date.now(),
+    };
+    if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
+    startTopGuard();
+    enforceTop();
+    overlayWin.webContents.send("drop", {
+      ...localDrop,
+      settings: {
+        volume: store.get("volume"),
+        musicVolume: store.get("musicVolume"),
+        duration: payload.duration || store.get("duration") || 4,
+        videoDuration: payload.duration || store.get("videoDuration") || 30,
+      },
+    });
 
     // Persist target in recent list
     if (target) {

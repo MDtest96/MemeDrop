@@ -422,6 +422,7 @@ wss.on("connection", (ws) => {
             }
           : null,
         caption: msg.caption ? String(msg.caption).slice(0, 80) : null,
+        duration: msg.duration || null,
         from: {
           id: meta.userId,
           username: meta.username || "QuickLauncher",
