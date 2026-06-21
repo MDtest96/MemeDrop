@@ -452,6 +452,30 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
   });
   wrap.appendChild(closeBtn);
 
+  // Emoji reactions
+  const reactions = ["👍", "😂", "🔥", "😭", "💀"];
+  const reactBar = document.createElement("div");
+  reactBar.className = "react-bar";
+  reactBar.style.cssText = "position:absolute;bottom:-32px;left:50%;transform:translateX(-50%);display:flex;gap:4px;z-index:4;opacity:0;transition:opacity 0.15s";
+  reactions.forEach(emoji => {
+    const btn = document.createElement("button");
+    btn.textContent = emoji;
+    btn.style.cssText = "width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.2);background:rgba(0,0,0,0.7);color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0";
+    btn.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Bump effect
+      btn.style.transform = "scale(1.3)";
+      setTimeout(() => btn.style.transform = "scale(1)", 150);
+    });
+    reactBar.appendChild(btn);
+  });
+  wrap.appendChild(reactBar);
+
+  // Show reactions on hover (same as close button)
+  wrap.addEventListener("mouseenter", () => reactBar.style.opacity = "1");
+  wrap.addEventListener("mouseleave", () => reactBar.style.opacity = "0");
+
   const mediaBox = document.createElement('div');
   mediaBox.className = 'media-box';
 

@@ -66,6 +66,19 @@ if (!window.memedrop) {
   };
 }
 
+// ── Preview cache ──────────────────────────────────────────────────────────
+const previewCache = new Map();
+const originalGetPreview = window.memedrop.getPreview;
+if (originalGetPreview) {
+  window.memedrop.getPreview = async (path, kind) => {
+    const key = path + "::" + (kind || "");
+    if (previewCache.has(key)) return previewCache.get(key);
+    const result = await originalGetPreview(path, kind);
+    if (result) previewCache.set(key, result);
+    return result;
+  };
+}
+
 let allMemes = [];
 let selectedPaths = new Set();
 let currentFilter = "all";
@@ -1805,6 +1818,28 @@ btnDropGroup?.addEventListener("click", async () => {
     }
   } catch (e) {
     toast("Erreur d'envoi au groupe", "error");
+  }
+});
+
+// Drop à tous les connectés
+document.getElementById("btn-drop-all")?.addEventListener("click", async () => {
+  if (!selectedMeme) return toast("Sélectionne d'abord un meme", "error");
+  if (!confirm(`Envoyer "${selectedMeme.name}" à TOUS les connectés ?`)) return;
+  try {
+    const result = await window.memedrop.sendDrop({
+      target: "@everyone",
+      filePath: selectedMeme.path,
+      kind: selectedMeme.kind,
+      caption: null,
+      rain: null,
+    });
+    if (result && result.ok) {
+      toast(`📤 Envoyé à tous !`);
+    } else {
+      toast("Erreur d'envoi", "error");
+    }
+  } catch (e) {
+    toast("Erreur d'envoi", "error");
   }
 });
 
