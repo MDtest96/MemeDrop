@@ -31,6 +31,8 @@ function setupTags(store) {
     const all = store.get("tags") || {};
     return [...new Set(Object.values(all).flat())];
   });
+
+  ipcMain.handle("tags:getAll", () => store.get("tags") || {});
 }
 
 module.exports = { setupTags };

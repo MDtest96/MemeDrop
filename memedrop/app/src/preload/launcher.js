@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("memedrop", {
   sendDropUrl: (payload) => ipcRenderer.invoke("drop:sendUrl", payload),
   getTags: (path) => ipcRenderer.invoke("tags:get", path),
   listAllTags: () => ipcRenderer.invoke("tags:listAll"),
+  getAllTags: () => ipcRenderer.invoke("tags:getAll"),
   setTags: (path, tags) => ipcRenderer.invoke("tags:set", path, tags),
   addTag: (memeId, tag) => ipcRenderer.invoke("tags:add", memeId, tag),
   removeTag: (memeId, tag) => ipcRenderer.invoke("tags:remove", memeId, tag),

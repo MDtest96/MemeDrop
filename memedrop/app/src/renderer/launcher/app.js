@@ -11,6 +11,7 @@ if (!window.memedrop) {
     getPreview: async (path, kind) => null,
     getTags: async () => [],
     listAllTags: async () => [],
+    getAllTags: async () => ({}),
     setTags: async () => {},
     getFavorites: async () => [],
     getAudioLibrary: async () => [],
@@ -72,6 +73,7 @@ let currentQuery = "";
 let selectedMeme = null;
 let allTags = [];
 let activeTagFilter = null;
+let allTagsMap = {}; // { path: [tag1, tag2] }
 let favorites = [];
 let audioLibrary = [];
 let soundboard = [];
@@ -420,7 +422,10 @@ async function renderGrid() {
   }
   if (currentQuery) {
     const q = currentQuery.toLowerCase();
-    filtered = filtered.filter((m) => m.name.toLowerCase().includes(q));
+    filtered = filtered.filter((m) =>
+      m.name.toLowerCase().includes(q) ||
+      (allTagsMap[m.path] && allTagsMap[m.path].some(t => t.toLowerCase().includes(q)))
+    );
   }
 
   // Clear grid
@@ -644,8 +649,10 @@ document.getElementById("btn-side-panel")?.addEventListener("click", () => {
 async function loadTags() {
   try {
     allTags = (await window.memedrop.listAllTags()) || [];
+    allTagsMap = (await window.memedrop.getAllTags()) || {};
   } catch (e) {
     allTags = [];
+    allTagsMap = {};
   }
   renderTags();
 }
@@ -1174,7 +1181,8 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
   // Send to all selected targets
   let successCount = 0;
   let lastTarget = "";
-  for (const target of targets) {
+  const localPreview = document.getElementById("panel-local-preview")?.checked ?? true;
+  for (const [idx, target] of targets.entries()) {
     lastTarget = target;
     let result;
     if (selectedMeme.isWeblink) {
@@ -1203,6 +1211,7 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
         kind: selectedMeme.kind,
         volume,
         duration: currentDuration,
+        showLocalPreview: idx === 0 ? localPreview : false,
       });
     }
 

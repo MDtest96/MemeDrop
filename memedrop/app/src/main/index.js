@@ -770,40 +770,42 @@ ipcMain.handle("drop:send", async (_e, payload) => {
     ws.send(JSON.stringify(formattedPayload));
 
     // --- Local Playback (Moi non plus fix) ---
-    // So the sender can see their own drop instantly
-    const localDrop = {
-      type: "drop",
-      media: formattedPayload.media
-        ? {
-            url: formattedPayload.media.data
-              ? formattedPayload.media.data.startsWith("data:")
-                ? formattedPayload.media.data
-                : `data:${formattedPayload.media.mime};base64,${formattedPayload.media.data}`
-              : formattedPayload.media.url,
-            kind: formattedPayload.media.kind,
-            mime: formattedPayload.media.mime,
-            name: formattedPayload.media.name,
-            size: formattedPayload.media.size,
-          }
-        : null,
-      caption: formattedPayload.caption,
-      rain: formattedPayload.rain,
-      from: { id: "me", username: "Moi" },
-      ts: Date.now(),
-    };
+    // So the sender can see their own drop instantly (unless disabled)
+    if (payload.showLocalPreview !== false) {
+      const localDrop = {
+        type: "drop",
+        media: formattedPayload.media
+          ? {
+              url: formattedPayload.media.data
+                ? formattedPayload.media.data.startsWith("data:")
+                  ? formattedPayload.media.data
+                  : `data:${formattedPayload.media.mime};base64,${formattedPayload.media.data}`
+                : formattedPayload.media.url,
+              kind: formattedPayload.media.kind,
+              mime: formattedPayload.media.mime,
+              name: formattedPayload.media.name,
+              size: formattedPayload.media.size,
+            }
+          : null,
+        caption: formattedPayload.caption,
+        rain: formattedPayload.rain,
+        from: { id: "me", username: "Moi" },
+        ts: Date.now(),
+      };
 
-    if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
-    startTopGuard();
-    enforceTop();
-    overlayWin.webContents.send("drop", {
-      ...localDrop,
-      settings: {
-        volume: store.get("volume"),
-        musicVolume: store.get("musicVolume"),
-        duration: payload.duration || store.get("duration") || 4,
-        videoDuration: payload.duration || store.get("videoDuration") || 30,
-      },
-    });
+      if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
+      startTopGuard();
+      enforceTop();
+      overlayWin.webContents.send("drop", {
+        ...localDrop,
+        settings: {
+          volume: store.get("volume"),
+          musicVolume: store.get("musicVolume"),
+          duration: payload.duration || store.get("duration") || 4,
+          videoDuration: payload.duration || store.get("videoDuration") || 30,
+        },
+      });
+    }
     // ----------------------------------------
 
     // Persist target
