@@ -25,6 +25,7 @@ const {
   getPreviewTarget,
   buildCollage,
   resolveMediaUrl,
+  getMemeFolder,
 } = require("./utils");
 const store = require("./store");
 
@@ -57,10 +58,10 @@ const { recordHistory } = setupHistory(store, {
     }
   },
 });
-setupMemes();
+setupMemes(store, app);
 setupTags(store);
 setupFavorites(store);
-setupAudio(store);
+setupAudio(store, app);
 let overlayWin = null;
 let launcherWin = null;
 let tray = null;
@@ -895,10 +896,7 @@ ipcMain.handle("giphy:download", async (e, url) => {
   try {
     const fs = require("fs");
     const path = require("path");
-    const { app } = require("electron");
-    // Align with memes.js directory for consistency (or use app.getPath('userData'))
-    // Since memes.js uses path.join(__dirname, '..', 'memes'), let's use the same:
-    const memeFolder = path.join(__dirname, "memes");
+    const memeFolder = getMemeFolder(store, app);
     if (!fs.existsSync(memeFolder))
       fs.mkdirSync(memeFolder, { recursive: true });
 
@@ -911,7 +909,6 @@ ipcMain.handle("giphy:download", async (e, url) => {
     const buffer = Buffer.from(await res.arrayBuffer());
     fs.writeFileSync(destPath, buffer);
 
-    // Return standard meme object as expected by app.js allMemes
     return {
       name: `giphy_${Date.now()}`,
       path: destPath,
@@ -920,6 +917,74 @@ ipcMain.handle("giphy:download", async (e, url) => {
   } catch (err) {
     console.error("Giphy download error:", err);
     return null;
+  });
+
+  // ── Generic URL download to memes folder ──────────────────────────────────
+  ipcMain.handle("memes:downloadUrl", async (e, url) => {
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const { net } = require("electron");
+      const memeFolder = getMemeFolder(store, app);
+      if (!fs.existsSync(memeFolder)) fs.mkdirSync(memeFolder, { recursive: true });
+
+      const res = await net.fetch(url);
+      const contentType = res.headers.get("content-type") || "";
+      const buffer = Buffer.from(await res.arrayBuffer());
+
+      // Determine extension
+      let ext = ".gif";
+      if (contentType.includes("video/mp4")) ext = ".mp4";
+      else if (contentType.includes("video/webm")) ext = ".webm";
+      else if (contentType.includes("image/png")) ext = ".png";
+      else if (contentType.includes("image/jpeg")) ext = ".jpg";
+      else if (contentType.includes("image/webp")) ext = ".webp";
+      else if (contentType.includes("image/gif")) ext = ".gif";
+      else if (contentType.includes("audio")) ext = ".mp3";
+
+      const filename = `web_${Date.now()}${ext}`;
+      const destPath = path.join(memeFolder, filename);
+      fs.writeFileSync(destPath, buffer);
+
+      const kind =
+        ext === ".mp4" || ext === ".webm" ? "video" :
+        ext === ".gif" ? "gif" :
+        [".mp3", ".wav", ".ogg"].includes(ext) ? "audio" : "image";
+
+      return { name: path.parse(filename).name, path: destPath, kind };
+    } catch (err) {
+      console.error("URL download error:", err);
+      return null;
+    }
+  });
+
+  // ── Dialog: select folder ────────────────────────────────────────────────
+ipcMain.handle("dialog:selectFolder", async () => {
+  const { dialog } = require("electron");
+  const result = await dialog.showOpenDialog({
+    properties: ["openDirectory"],
+  });
+  if (!result.canceled && result.filePaths.length > 0) {
+    return result.filePaths[0];
+  }
+  return null;
+});
+
+// ── Groups ────────────────────────────────────────────────────────────────
+ipcMain.handle("groups:get", () => store.get("groups") || []);
+ipcMain.handle("groups:save", (_e, name, members) => {
+  const groups = store.get("groups") || [];
+  const idx = groups.findIndex((g) => g.name === name);
+  if (idx >= 0) groups[idx] = { name, members };
+  else groups.push({ name, members });
+  store.set("groups", groups);
+});
+
+// ── Audio: play sound ─────────────────────────────────────────────────────
+ipcMain.handle("audio:playSound", async (_e, filePath) => {
+  const wins = BrowserWindow.getAllWindows();
+  for (const w of wins) {
+    if (!w.isDestroyed()) w.webContents.send("audio:play", filePath);
   }
 });
 

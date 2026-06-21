@@ -18,12 +18,13 @@ function setupSettings(store, callbacks, mockElectron = null) {
       linkIdentity: store.get("linkIdentity"),
       guilds: store.get("guilds"),
       giphyApiKey: store.get("giphyApiKey"),
+      memeFolderPath: store.get("memeFolderPath"),
     };
   });
 
   ipcMain.handle("settings:set", (_e, patch) => {
     for (const [k, v] of Object.entries(patch)) store.set(k, v);
-    
+
     if ("autostart" in patch) {
       app.setLoginItemSettings({
         openAtLogin: !!patch.autostart,
@@ -36,15 +37,15 @@ function setupSettings(store, callbacks, mockElectron = null) {
       if ("serverUrl" in patch) {
         if (callbacks.onServerChanged) callbacks.onServerChanged();
       }
-      
+
       if ("paused" in patch) {
         if (callbacks.onPausedChanged) callbacks.onPausedChanged(patch.paused);
       }
-      
+
       if ("overlayDisplayId" in patch) {
         if (callbacks.onDisplayChanged) callbacks.onDisplayChanged();
       }
-      
+
       if ("volume" in patch ||
           "musicVolume" in patch ||
           "opacity" in patch ||
@@ -60,7 +61,7 @@ function setupSettings(store, callbacks, mockElectron = null) {
         if ("videoDuration" in patch) livePatch.videoDuration = patch.videoDuration;
         if ("spotlightOnDrop" in patch) livePatch.spotlightOnDrop = patch.spotlightOnDrop;
         if ("theme" in patch) livePatch.theme = patch.theme;
-        
+
         if (callbacks.onLivePatch) callbacks.onLivePatch(livePatch);
       }
     }

@@ -137,7 +137,6 @@
 
             <div class="studio-tabs">
                 <button class="studio-tab active" data-tab="grid">Grid</button>
-                <button class="studio-tab" data-tab="studio">Studio</button>
                 <button class="studio-tab" data-tab="giphy">GIF Search</button>
                 <button class="studio-tab" data-tab="weblink">Lien Web</button>
                 <button class="studio-tab" data-tab="settings">
@@ -573,6 +572,18 @@
                 </div>
             </section>
 
+            <!-- DOSSIER MEMES -->
+            <section style="margin-bottom: 16px">
+                <h3>Dossier Memes</h3>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+                    <input type="text" id="setting-meme-folder" class="input flex-1" readonly placeholder="Documents/MemeDrop/memes (par défaut)">
+                    <button id="btn-choose-meme-folder" class="ghost" style="padding:6px 12px">📂 Parcourir</button>
+                </div>
+                <p style="font-size:11px;color:var(--text-dim);margin-top:4px">
+                    Les nouveaux memes seront sauvegardés dans ce dossier.
+                </p>
+            </section>
+
             <!-- Appairage -->
             <section style="margin-bottom: 16px">
                 <h3>Appairage</h3>
@@ -728,13 +739,15 @@
                 <div class="panel-body">
                     <div class="field">
                         <label>Cible</label>
-                        <input
-                            type="text"
-                            id="panel-target"
-                            class="input"
-                            placeholder="@pseudo ou id"
-                            list="target-suggestions"
-                        />
+                    <label style="display:flex;flex-direction:column;gap:4px">
+                        Cibles (Ctrl+clic pour multiples)
+                        <select id="panel-target" class="input" multiple size="4">
+                        </select>
+                        <div style="display:flex;gap:4px;margin-top:2px">
+                            <button id="btn-select-all-targets" class="ghost" style="font-size:10px;padding:2px 6px">Tout</button>
+                            <button id="btn-clear-targets" class="ghost" style="font-size:10px;padding:2px 6px">Effacer</button>
+                        </div>
+                    </label>
                         <datalist id="target-suggestions"></datalist>
                     </div>
                     <div class="field">
