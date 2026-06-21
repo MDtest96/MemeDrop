@@ -98,13 +98,31 @@ function setupMemes(store, app) {
   });
 
   ipcMain.handle("memes:saveClipboard", async () => {
+    // First try file path (preserves GIF/video format from Explorer)
+    try {
+      const filePath = clipboard.read("FileName");
+      if (filePath) {
+        const ext = path.extname(filePath).toLowerCase();
+        const validExts = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".webm", ".mp3", ".wav", ".ogg"];
+        if (validExts.includes(ext)) {
+          const folder = memeFolder();
+          const newName = `clipboard_${Date.now()}${ext}`;
+          const destPath = path.join(folder, newName);
+          fs.copyFileSync(filePath, destPath);
+          const kind = ext === ".gif" ? "gif" : [".mp4", ".webm"].includes(ext) ? "video" : [".mp3", ".wav", ".ogg"].includes(ext) ? "audio" : "image";
+          return { name: path.parse(newName).name, path: destPath, kind };
+        }
+      }
+    } catch {}
+
+    // Fallback: clipboard as static PNG (loses GIF/video animation)
     const image = clipboard.readImage();
     if (image.isEmpty()) return null;
     const folder = memeFolder();
     const newName = `clipboard_${Date.now()}.png`;
     const destPath = path.join(folder, newName);
     fs.writeFileSync(destPath, image.toPNG());
-    return { name: path.parse(newName).name, path: destPath, kind: 'image' };
+    return { name: path.parse(newName).name, path: destPath, kind: "image" };
   });
 
   ipcMain.handle("memes:rename", async (_e, oldPath, newName) => {
