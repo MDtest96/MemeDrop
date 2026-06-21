@@ -1,0 +1,47 @@
+{
+  "name": "memedrop",
+  "version": "1.4.2",
+    "description": "MemeDrop Unified App",
+  "author": "MDtest96",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "nodemon --watch src/main --watch src/preload --ext js --exec \"electron . --remote-debugging-port=9222\"",
+    "start_dev": "npm run dev",
+    "build:win": "electron-builder --win",
+    "release": "dotenv -- electron-builder --win -p always",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.9",
+    "jimp": "^1.6.1",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.9",
+    "dotenv-cli": "^11.0.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^24.13.3",
+    "jsdom": "^29.1.1",
+    "nodemon": "^3.1.14",
+    "vitest": "^4.1.9"
+  },
+  "build": {
+    "appId": "com.memedrop.app",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "MDtest96",
+        "repo": "MemeDrop"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "src/renderer/overlay/assets/icon.png"
+    }
+  }
+}
