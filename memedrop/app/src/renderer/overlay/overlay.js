@@ -32,7 +32,7 @@ let visualActive = 0;
 // dépasse du cadre (top:-10px / right:-10px, 26px de large) — sans ça, le
 // curseur n'est jamais considéré "sur le drop" quand il est sur la croix et
 // le clic passe au travers vers le jeu.
-const HOVER_MARGIN = 14;
+const HOVER_MARGIN = 24;
 
 // Renvoie le drop dont le bounding-rect (élargi de HOVER_MARGIN) contient
 // (x, y), ou null.
@@ -573,7 +573,7 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
   function removeNow({ smooth = false } = {}) {
     if (removed || !anchor.isConnected) return;
     removed = true;
-    
+
     // Aggressive cleanup for video to prevent zombie audio
     if (isVideo && el) {
       livePlayables.delete(el);
@@ -583,17 +583,17 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
         el.load();
       } catch (e) {}
     }
-    
+
     // Stoppe la musique liée à cette image si elle joue encore
     if (musicAudio) {
-      try { 
+      try {
         musicAudio.pause();
         musicAudio.removeAttribute('src');
         musicAudio.load();
       } catch (e) {}
       liveAudios.delete(musicAudio);
     }
-    
+
     liveDrops.delete(dropMeta);
     wrap.classList.add(smooth ? 'closing' : 'leaving');
     setTimeout(() => {

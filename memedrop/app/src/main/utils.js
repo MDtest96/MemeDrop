@@ -2,6 +2,18 @@ const fs = require('fs');
 const path = require('path');
 const { Jimp } = require('jimp');
 
+// ── getMemeFolder ──────────────────────────────────────────────────────────
+function getMemeFolder(store, app) {
+  const custom = store.get('memeFolderPath');
+  if (custom) {
+    if (!fs.existsSync(custom)) fs.mkdirSync(custom, { recursive: true });
+    return custom;
+  }
+  const defaultPath = path.join(app.getPath('documents'), 'MemeDrop', 'memes');
+  if (!fs.existsSync(defaultPath)) fs.mkdirSync(defaultPath, { recursive: true });
+  return defaultPath;
+}
+
 // ── formatQuickDropPayload ────────────────────────────────────────────────
 async function formatQuickDropPayload(payload) {
   let media = null;
@@ -56,7 +68,9 @@ async function formatQuickDropPayload(payload) {
     caption: payload.caption,
     media,
     music,
-    volume: payload.volume !== undefined ? payload.volume : 1.0
+    volume: payload.volume !== undefined ? payload.volume : 1.0,
+    duration: payload.duration || undefined,
+    rain: payload.rain || undefined,
   };
 }
 
@@ -189,4 +203,4 @@ async function resolveMediaUrl(url) {
   return { url, kind: 'image', mime: 'image/jpeg', unresolved: true };
 }
 
-module.exports = { formatQuickDropPayload, getPreviewTarget, buildCollage, resolveMediaUrl };
+module.exports = { formatQuickDropPayload, getPreviewTarget, buildCollage, resolveMediaUrl, getMemeFolder };

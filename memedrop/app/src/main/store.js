@@ -27,7 +27,11 @@ const store = new Store({
     audioPairings: {},
     paused: false,
     overlayDisplayId: null,
-    theme: "classic"
+    theme: "classic",
+    memeFolderPath: null,
+    favorites: [],
+    tags: {},
+    groups: []
   },
 });
 

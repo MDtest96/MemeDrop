@@ -2,7 +2,13 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const LOG_FILE = path.join(__dirname, 'errors.log');
+// Use appData path so it works in production (avoid __dirname = read-only in asar)
+const appDataDir = process.env.APPDATA
+  ? path.join(process.env.APPDATA, 'MemeDrop-Unified-Agent')
+  : path.join(require('os').homedir(), '.memedrop');
+if (!fs.existsSync(appDataDir)) fs.mkdirSync(appDataDir, { recursive: true });
+
+const LOG_FILE = path.join(appDataDir, 'errors.log');
 const agentMode = process.argv.includes('--agent-mode');
 
 if (agentMode) {
@@ -20,22 +26,18 @@ const child = spawn('npm', ['run', 'dev'], {
 
 function logError(chunk) {
   const text = chunk.toString();
-  
-  // Afficher dans la console normale si ce n'est pas l'agent qui écoute
   if (!agentMode) {
     process.stdout.write(text);
   }
 
-  // Filtrer les mots-clés d'erreur
   const lower = text.toLowerCase();
   if (
-    lower.includes('error') || 
-    lower.includes('exception') || 
-    lower.includes('uncaught') || 
+    lower.includes('error') ||
+    lower.includes('exception') ||
+    lower.includes('uncaught') ||
     lower.includes('fail')
   ) {
     if (agentMode) {
-      // Ce log va spécifiquement réveiller l'agent
       process.stdout.write(`\n🚨 [AGENT WAKEUP] ERREUR DÉTECTÉE PAR LE WATCHER :\n${text}\n`);
     }
     const timestamp = new Date().toISOString();

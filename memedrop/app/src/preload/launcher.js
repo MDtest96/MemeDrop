@@ -21,18 +21,19 @@ contextBridge.exposeInMainWorld("memedrop", {
   getUsers: () => ipcRenderer.invoke("discord:users"),
   sendDrop: (payload) => ipcRenderer.invoke("drop:send", payload),
   sendDropUrl: (payload) => ipcRenderer.invoke("drop:sendUrl", payload),
-  getTags: () => ipcRenderer.invoke("tags:get"),
+  getTags: (path) => ipcRenderer.invoke("tags:get", path),
   listAllTags: () => ipcRenderer.invoke("tags:listAll"),
   setTags: (path, tags) => ipcRenderer.invoke("tags:set", path, tags),
   addTag: (memeId, tag) => ipcRenderer.invoke("tags:add", memeId, tag),
   removeTag: (memeId, tag) => ipcRenderer.invoke("tags:remove", memeId, tag),
   getFavorites: () => ipcRenderer.invoke("favs:get"),
-  toggleFavorite: (memeId) => ipcRenderer.invoke("favs:toggle", memeId),
+  toggleFavorite: (memeId, memeData) => ipcRenderer.invoke('favs:toggle', memeId, memeData),
   getAudioLibrary: () => ipcRenderer.invoke("audio:library"),
   scanAudio: () => ipcRenderer.invoke("audio:library"),
   getSoundboard: () => ipcRenderer.invoke("audio:soundboard"),
   addSoundboard: (memeId, audioId) =>
     ipcRenderer.invoke("audio:addSoundboard", memeId, audioId),
+  removeSoundboard: (path) => ipcRenderer.invoke("audio:removeSoundboard", path),
   setAudioPairing: (meme, audio) =>
     ipcRenderer.invoke("audio:setPairing", meme, audio),
   getAudioPairings: () => ipcRenderer.invoke("audio:getPairings"),
@@ -80,9 +81,17 @@ contextBridge.exposeInMainWorld("memedrop", {
     ipcRenderer.on("library:changed", fn);
     return () => ipcRenderer.off("library:changed", fn);
   },
-  buildCollage: (filePaths) => ipcRenderer.invoke("collage:build", filePaths),
-  resolveUrl: (url) => ipcRenderer.invoke("url:resolve", url),
-  deleteMemes: (paths) => ipcRenderer.invoke("memes:delete", paths),
+  onAudioPlay: (callback) => {
+    const fn = (_e, filePath) => callback(filePath);
+    ipcRenderer.on("audio:play", fn);
+    return () => ipcRenderer.off("audio:play", fn);
+  },
+  buildCollage: (filePaths) => ipcRenderer.invoke('collage:build', filePaths),
+  resolveUrl: (url) => ipcRenderer.invoke('url:resolve', url),
+  deleteMemes: (paths) => ipcRenderer.invoke('memes:delete', paths),
+  selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
+  playSound: (filePath) => ipcRenderer.invoke('audio:playSound', filePath),
+  downloadUrl: (url) => ipcRenderer.invoke('memes:downloadUrl', url),
 
   // Settings & Updater
   getVersion: () => ipcRenderer.invoke("app:get-version"),
