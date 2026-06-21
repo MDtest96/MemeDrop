@@ -51,6 +51,7 @@ app.whenReady().then(() => {
 ipcMain.handle('memes:list', () => []);
 ipcMain.handle('memes:sort', () => {});
 ipcMain.handle('memes:saveFile', () => {});
+ipcMain.handle('memes:openFolder', () => {});
 ipcMain.handle('memes:saveClipboard', () => {});
 ipcMain.handle('discord:users', () => [{username: 'fatima6848'}, {username: 'evanlegends'}]);
 ipcMain.handle('drop:send', async (_e, payload) => {

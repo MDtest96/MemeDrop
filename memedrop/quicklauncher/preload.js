@@ -31,4 +31,15 @@ contextBridge.exposeInMainWorld('memedrop', {
   generateMeme: (opts) => ipcRenderer.invoke('studio:generate', opts),
   searchGiphy: (q) => ipcRenderer.invoke('giphy:search', q),
   trendingGiphy: () => ipcRenderer.invoke('giphy:trending'),
+  openMemeFolder: () => ipcRenderer.invoke('memes:openFolder'),
+  onShortcut: (callback) => {
+    const fn = (_e, shortcut) => callback(shortcut);
+    ipcRenderer.on("shortcut:trigger", fn);
+    return () => ipcRenderer.off("shortcut:trigger", fn);
+  },
+  onLibraryChanged: (callback) => {
+    const fn = () => callback();
+    ipcRenderer.on("library:changed", fn);
+    return () => ipcRenderer.off("library:changed", fn);
+  }
 });

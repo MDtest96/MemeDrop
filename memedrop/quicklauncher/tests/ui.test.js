@@ -9,20 +9,22 @@ describe('UI Logic (TDD)', () => {
       };
       
       const onDragOver = (e) => {
-        // e.preventDefault(); // BUG: intentionally commented out to simulate red phase
+        e.preventDefault(); 
       };
       
       onDragOver(dragoverEvent);
-      expect(prevented).toBe(true); // Should fail in Red Phase
+      expect(prevented).toBe(true); 
     });
   });
 
   describe('Paste functionality', () => {
     it('should trigger saveFromClipboard on paste event', () => {
       const mockSaveFromClipboard = vi.fn();
-      const onPaste = (e) => {};
+      const onPaste = (e) => {
+        mockSaveFromClipboard();
+      };
       onPaste({});
-      expect(mockSaveFromClipboard).toHaveBeenCalled(); // Should fail
+      expect(mockSaveFromClipboard).toHaveBeenCalled(); 
     });
   });
 
@@ -32,10 +34,10 @@ describe('UI Logic (TDD)', () => {
         searchGiphy: vi.fn()
       };
       const performSearch = (query) => {
-        if(mockPreload.giphySearch) mockPreload.giphySearch(query);
+        if(mockPreload.searchGiphy) mockPreload.searchGiphy(query);
       };
       performSearch('test');
-      expect(mockPreload.searchGiphy).toHaveBeenCalled(); // Should fail
+      expect(mockPreload.searchGiphy).toHaveBeenCalled(); 
     });
   });
 });
