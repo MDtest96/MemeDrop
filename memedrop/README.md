@@ -5,7 +5,7 @@
 Two pieces:
 
 - **`bot/`** → Discord bot + WebSocket hub. Hosted once on Railway, runs 24/7.
-- **`overlay/`** → Electron app. Each friend installs the `.exe` on their PC.
+- **`app/`** → Unified Electron app (launcher + overlay). Each friend installs the `.exe`.
 
 The bot exposes `/drop @target`, `/dropall`, `/link`, `/unlink`, `/status`, `/who`, `/block`, `/unblock`, `/blocklist`. The overlay is a transparent click-through window that sits on top of the user's game, launches automatically at login, and re-connects to your bot on its own.
 

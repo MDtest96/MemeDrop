@@ -333,6 +333,17 @@ function connectWS() {
     setState({ status: "paused", code: null, user: null, links: null });
     return;
   }
+  // Clean old WebSocket to prevent its on("close") from firing after new one connects
+  const oldWs = ws;
+  ws = null;
+  if (oldWs) {
+    try {
+      oldWs.onclose = null;
+      oldWs.onerror = null;
+      oldWs.onmessage = null;
+      oldWs.close();
+    } catch {}
+  }
   const url = store.get("serverUrl");
   setState({ status: "connecting", code: null, user: null, links: null });
 
@@ -446,6 +457,7 @@ function connectWS() {
         setState({ status: "connecting", code: null, user: null, links: null });
         break;
       case "users:list":
+        store.set("cachedUsers", msg);
         if (launcherWin && !launcherWin.isDestroyed()) {
           launcherWin.webContents.send("users:list", msg);
         }
@@ -769,40 +781,42 @@ ipcMain.handle("drop:send", async (_e, payload) => {
     ws.send(JSON.stringify(formattedPayload));
 
     // --- Local Playback (Moi non plus fix) ---
-    // So the sender can see their own drop instantly
-    const localDrop = {
-      type: "drop",
-      media: formattedPayload.media
-        ? {
-            url: formattedPayload.media.data
-              ? formattedPayload.media.data.startsWith("data:")
-                ? formattedPayload.media.data
-                : `data:${formattedPayload.media.mime};base64,${formattedPayload.media.data}`
-              : formattedPayload.media.url,
-            kind: formattedPayload.media.kind,
-            mime: formattedPayload.media.mime,
-            name: formattedPayload.media.name,
-            size: formattedPayload.media.size,
-          }
-        : null,
-      caption: formattedPayload.caption,
-      rain: formattedPayload.rain,
-      from: { id: "me", username: "Moi" },
-      ts: Date.now(),
-    };
+    // So the sender can see their own drop instantly (unless disabled)
+    if (payload.showLocalPreview !== false) {
+      const localDrop = {
+        type: "drop",
+        media: formattedPayload.media
+          ? {
+              url: formattedPayload.media.data
+                ? formattedPayload.media.data.startsWith("data:")
+                  ? formattedPayload.media.data
+                  : `data:${formattedPayload.media.mime};base64,${formattedPayload.media.data}`
+                : formattedPayload.media.url,
+              kind: formattedPayload.media.kind,
+              mime: formattedPayload.media.mime,
+              name: formattedPayload.media.name,
+              size: formattedPayload.media.size,
+            }
+          : null,
+        caption: formattedPayload.caption,
+        rain: formattedPayload.rain,
+        from: { id: "me", username: "Moi" },
+        ts: Date.now(),
+      };
 
-    if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
-    startTopGuard();
-    enforceTop();
-    overlayWin.webContents.send("drop", {
-      ...localDrop,
-      settings: {
-        volume: store.get("volume"),
-        musicVolume: store.get("musicVolume"),
-        duration: payload.duration || store.get("duration") || 4,
-        videoDuration: payload.duration || store.get("videoDuration") || 30,
-      },
-    });
+      if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
+      startTopGuard();
+      enforceTop();
+      overlayWin.webContents.send("drop", {
+        ...localDrop,
+        settings: {
+          volume: store.get("volume"),
+          musicVolume: store.get("musicVolume"),
+          duration: payload.duration || store.get("duration") || 4,
+          videoDuration: payload.duration || store.get("videoDuration") || 30,
+        },
+      });
+    }
     // ----------------------------------------
 
     // Persist target
@@ -846,8 +860,8 @@ ipcMain.handle("drop:sendUrl", async (_e, payload) => {
       type: "drop",
       media: {
         url: resolved.url || url,
-        kind: resolvedKind || resolved.kind,
-        mime: resolved.mime || media.mime,
+        kind: resolved.kind,
+        mime: resolved.mime || "image/jpeg",
       },
       caption: caption || null,
       rain: rain || null,
@@ -881,39 +895,40 @@ ipcMain.handle("drop:sendUrl", async (_e, payload) => {
 // Audio handlers are managed by audio module
 
 ipcMain.handle("streak:get", () => null);
+ipcMain.handle("users:getCached", () => store.get("cachedUsers") || null);
 ipcMain.handle("schedule:get", () => []);
 ipcMain.handle("schedule:cancel", () => {});
 ipcMain.handle("studio:templates", () => []);
 ipcMain.handle("studio:generate", () => {});
-ipcMain.handle("giphy:search", async (e, query) => {
+ipcMain.handle("giphy:search", async (e, query, offset = 0) => {
   const apiKey = store.get("giphyApiKey") || "A7Su0Alx0oH5dgrDaOicRiEBYqeZGWdX";
-  if (!apiKey) return [];
+  if (!apiKey) return { data: [], pagination: { total_count: 0 } };
   try {
     const { net } = require("electron");
     const res = await net.fetch(
-      `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=24`,
+      `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=24&offset=${offset}`,
     );
     const json = await res.json();
-    return json.data || [];
+    return { data: json.data || [], pagination: json.pagination || { total_count: 0 } };
   } catch (err) {
     console.error("Giphy Search error:", err);
-    return [];
+    return { data: [], pagination: { total_count: 0 } };
   }
 });
 
-ipcMain.handle("giphy:trending", async () => {
+ipcMain.handle("giphy:trending", async (e, offset = 0) => {
   const apiKey = store.get("giphyApiKey") || "A7Su0Alx0oH5dgrDaOicRiEBYqeZGWdX";
-  if (!apiKey) return [];
+  if (!apiKey) return { data: [], pagination: { total_count: 0 } };
   try {
     const { net } = require("electron");
     const res = await net.fetch(
-      `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=24`,
+      `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=24&offset=${offset}`,
     );
     const json = await res.json();
-    return json.data || [];
+    return { data: json.data || [], pagination: json.pagination || { total_count: 0 } };
   } catch (err) {
     console.error("Giphy Trending error:", err);
-    return [];
+    return { data: [], pagination: { total_count: 0 } };
   }
 });
 
@@ -925,15 +940,19 @@ ipcMain.handle("giphy:download", async (e, url) => {
     if (!fs.existsSync(memeFolder))
       fs.mkdirSync(memeFolder, { recursive: true });
 
-    // Generate a unique filename
-    const filename = `giphy_${Date.now()}.gif`;
-    const destPath = path.join(memeFolder, filename);
-
     const { net } = require("electron");
     const res = await net.fetch(url);
+    const contentType = res.headers.get("content-type") || "";
     const buffer = Buffer.from(await res.arrayBuffer());
+    let ext = ".gif";
+    if (contentType.includes("video/mp4")) ext = ".mp4";
+    else if (contentType.includes("video/webm")) ext = ".webm";
+    else if (contentType.includes("image/png")) ext = ".png";
+    else if (contentType.includes("image/jpeg")) ext = ".jpg";
+    else if (contentType.includes("image/webp")) ext = ".webp";
+    const filename = `giphy_${Date.now()}${ext}`;
+    const destPath = path.join(memeFolder, filename);
     fs.writeFileSync(destPath, buffer);
-
     return {
       name: `giphy_${Date.now()}`,
       path: destPath,
@@ -981,6 +1000,58 @@ ipcMain.handle("giphy:download", async (e, url) => {
     } catch (err) {
       console.error("URL download error:", err);
       return null;
+    }
+  });
+
+  // ── Fetch URL as data URL (bypass CSP/CORS) ─────────────────────────────────
+  ipcMain.handle("fetch:asDataUrl", async (e, url) => {
+    try {
+      const { net } = require("electron");
+      const res = await net.fetch(url);
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const contentType = res.headers.get("content-type") || "image/gif";
+      return `data:${contentType};base64,${buffer.toString("base64")}`;
+    } catch (err) {
+      console.error("Fetch proxy error:", err);
+      return null;
+    }
+  });
+
+  // ── Export/import config ────────────────────────────────────────────────────
+  ipcMain.handle("tools:exportConfig", async () => {
+    const data = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      settings: {
+        serverUrl: store.get("serverUrl"),
+        volume: store.get("volume"),
+        duration: store.get("duration"),
+        videoDuration: store.get("videoDuration"),
+        giphyApiKey: store.get("giphyApiKey"),
+        memeFolderPath: store.get("memeFolderPath"),
+        theme: store.get("theme"),
+      },
+      tags: store.get("tags"),
+      favorites: store.get("favorites"),
+      groups: store.get("groups"),
+      audioPairings: store.get("audioPairings"),
+    };
+    return data;
+  });
+
+  ipcMain.handle("tools:importConfig", async (_e, data) => {
+    try {
+      if (!data || !data.version) return { ok: false, error: "Format invalide" };
+      if (data.settings) {
+        for (const [k, v] of Object.entries(data.settings)) store.set(k, v);
+      }
+      if (data.tags) store.set("tags", data.tags);
+      if (data.favorites) store.set("favorites", data.favorites);
+      if (data.groups) store.set("groups", data.groups);
+      if (data.audioPairings) store.set("audioPairings", data.audioPairings);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
     }
   });
 

@@ -239,7 +239,7 @@ async function pushLinksUpdate(userId) {
 wss.on("connection", (ws) => {
   const code = generatePairingCode();
   pendingOverlays.set(code, ws);
-  wsMeta.set(ws, { code, userId: null });
+  wsMeta.set(ws, { code, userId: null, username: null });
 
   sendJson(ws, { type: "pairing_code", code });
   console.log(`[ws] overlay connected, pairing code = ${code}`);
@@ -296,7 +296,7 @@ wss.on("connection", (ws) => {
           blockedUsers,
         });
       }
-      wsMeta.set(ws, { code: null, userId });
+      wsMeta.set(ws, { code: null, userId, username });
       sendJson(ws, {
         type: "linked",
         user: { id: userId, username },

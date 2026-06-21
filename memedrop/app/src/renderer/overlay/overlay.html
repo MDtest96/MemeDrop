@@ -130,7 +130,7 @@
       box-shadow: 0 4px 10px rgba(0,0,0,.35);
     }
 
-    /* Bouton fermer — coin haut-droit, discret, visible au survol du drop */
+    /* Bouton fermer — toujours visible, toujours clickable */
     .drop-close {
       position: absolute;
       top: -16px;
@@ -149,18 +149,12 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      opacity: 0;
-      transform: scale(.7);
-      transition: opacity 120ms ease, transform 120ms ease, background 120ms ease;
-      z-index: 4;
-      box-shadow: 0 2px 8px rgba(0,0,0,.4);
-    }
-    /* L'overlay est click-through (forward:true) : :hover n'est pas fiable,
-       donc overlay.js bascule manuellement la classe .hover via le sondage
-       du curseur fait dans le main process. */
-    .drop.hover .drop-close {
       opacity: 1;
       transform: scale(1);
+      transition: background 120ms ease;
+      z-index: 4;
+      box-shadow: 0 2px 8px rgba(0,0,0,.4);
+      pointer-events: auto;
     }
     .drop-close:hover {
       background: rgba(255,60,90,.9);

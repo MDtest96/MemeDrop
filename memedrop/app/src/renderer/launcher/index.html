@@ -584,6 +584,18 @@
                 </p>
             </section>
 
+            <!-- EXPORT / IMPORT -->
+            <section style="margin-bottom: 16px">
+                <h3>Sauvegarde</h3>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button id="btn-export-config" class="ghost" style="padding:6px 12px">📤 Exporter la config</button>
+                    <button id="btn-import-config" class="ghost" style="padding:6px 12px">📥 Importer la config</button>
+                </div>
+                <p style="font-size:11px;color:var(--text-dim);margin-top:4px">
+                    Exporte/importe tous les réglages, tags, favoris et groupes.
+                </p>
+            </section>
+
             <!-- Appairage -->
             <section style="margin-bottom: 16px">
                 <h3>Appairage</h3>
@@ -715,6 +727,9 @@
                     <button id="btn-drop-group" class="primary flex-1">
                         Drop
                     </button>
+                    <button id="btn-drop-all" class="danger-btn" style="flex:1;padding:6px">
+                        📤 Tous
+                    </button>
                 </div>
             </section>
         </div>
@@ -792,16 +807,11 @@
                         </div>
                     </div>
                     <div class="field" style="margin-top: 8px">
-                        <label
-                            style="
-                                display: flex;
-                                align-items: center;
-                                gap: 8px;
-                                cursor: pointer;
-                            "
-                        >
-                            <input type="checkbox" id="panel-rain" /> Mode Pluie
-                            (Spam)
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                            <input type="checkbox" id="panel-rain" /> Mode Pluie (Spam)
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px">
+                            <input type="checkbox" id="panel-local-preview" /> Aperçu local
                         </label>
                     </div>
                 </div>

@@ -26,6 +26,18 @@ const child = spawn('npm', ['run', 'dev'], {
 
 function logError(chunk) {
   const text = chunk.toString();
+
+  // Rotate log if >5MB
+  try {
+    if (fs.existsSync(LOG_FILE) && fs.statSync(LOG_FILE).size > 5 * 1024 * 1024) {
+      for (let i = 3; i >= 1; i--) {
+        const old = LOG_FILE + '.' + i;
+        const older = LOG_FILE + '.' + (i + 1);
+        if (fs.existsSync(old)) fs.renameSync(old, older);
+      }
+      fs.renameSync(LOG_FILE, LOG_FILE + '.1');
+    }
+  } catch {}
   if (!agentMode) {
     process.stdout.write(text);
   }

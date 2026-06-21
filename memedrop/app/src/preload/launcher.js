@@ -23,17 +23,20 @@ contextBridge.exposeInMainWorld("memedrop", {
   sendDropUrl: (payload) => ipcRenderer.invoke("drop:sendUrl", payload),
   getTags: (path) => ipcRenderer.invoke("tags:get", path),
   listAllTags: () => ipcRenderer.invoke("tags:listAll"),
+  getAllTags: () => ipcRenderer.invoke("tags:getAll"),
   setTags: (path, tags) => ipcRenderer.invoke("tags:set", path, tags),
   addTag: (memeId, tag) => ipcRenderer.invoke("tags:add", memeId, tag),
   removeTag: (memeId, tag) => ipcRenderer.invoke("tags:remove", memeId, tag),
   getFavorites: () => ipcRenderer.invoke("favs:get"),
-  toggleFavorite: (memeId, memeData) => ipcRenderer.invoke('favs:toggle', memeId, memeData),
+  toggleFavorite: (memeId, memeData) =>
+    ipcRenderer.invoke("favs:toggle", memeId, memeData),
   getAudioLibrary: () => ipcRenderer.invoke("audio:library"),
   scanAudio: () => ipcRenderer.invoke("audio:library"),
   getSoundboard: () => ipcRenderer.invoke("audio:soundboard"),
   addSoundboard: (memeId, audioId) =>
     ipcRenderer.invoke("audio:addSoundboard", memeId, audioId),
-  removeSoundboard: (path) => ipcRenderer.invoke("audio:removeSoundboard", path),
+  removeSoundboard: (path) =>
+    ipcRenderer.invoke("audio:removeSoundboard", path),
   setAudioPairing: (meme, audio) =>
     ipcRenderer.invoke("audio:setPairing", meme, audio),
   getAudioPairings: () => ipcRenderer.invoke("audio:getPairings"),
@@ -59,17 +62,10 @@ contextBridge.exposeInMainWorld("memedrop", {
   setLastDrop: (data) => ipcRenderer.invoke("history:setLast", data),
   getLastDrop: () => ipcRenderer.invoke("history:getLast"),
   copyCommand: (data) => ipcRenderer.invoke("tools:copyCommand", data),
-  searchGiphy: (query) => ipcRenderer.invoke("giphy:search", query),
-  trendingGiphy: () => ipcRenderer.invoke("giphy:trending"),
+  searchGiphy: (query, offset) =>
+    ipcRenderer.invoke("giphy:search", query, offset),
+  trendingGiphy: (offset) => ipcRenderer.invoke("giphy:trending", offset),
   downloadGiphy: (url) => ipcRenderer.invoke("giphy:download", url),
-  saveGroup: (group) => ipcRenderer.invoke("groups:save", group),
-  dropGroup: (groupId, target) =>
-    ipcRenderer.invoke("groups:drop", groupId, target),
-  getScheduled: () => ipcRenderer.invoke("schedule:get"),
-  getTemplates: () => ipcRenderer.invoke("studio:templates"),
-  generateMeme: (opts) => ipcRenderer.invoke("studio:generate", opts),
-  searchGiphy: (q) => ipcRenderer.invoke("giphy:search", q),
-  trendingGiphy: () => ipcRenderer.invoke("giphy:trending"),
   openMemeFolder: () => ipcRenderer.invoke("memes:openFolder"),
   onShortcut: (callback) => {
     const fn = (_e, shortcut) => callback(shortcut);
@@ -86,12 +82,18 @@ contextBridge.exposeInMainWorld("memedrop", {
     ipcRenderer.on("audio:play", fn);
     return () => ipcRenderer.off("audio:play", fn);
   },
-  buildCollage: (filePaths) => ipcRenderer.invoke('collage:build', filePaths),
-  resolveUrl: (url) => ipcRenderer.invoke('url:resolve', url),
-  deleteMemes: (paths) => ipcRenderer.invoke('memes:delete', paths),
-  selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
-  playSound: (filePath) => ipcRenderer.invoke('audio:playSound', filePath),
-  downloadUrl: (url) => ipcRenderer.invoke('memes:downloadUrl', url),
+  buildCollage: (filePaths) => ipcRenderer.invoke("collage:build", filePaths),
+  resolveUrl: (url) => ipcRenderer.invoke("url:resolve", url),
+  deleteMemes: (paths) => ipcRenderer.invoke("memes:delete", paths),
+  renameMeme: (oldPath, newName) =>
+    ipcRenderer.invoke("memes:rename", oldPath, newName),
+  selectFolder: () => ipcRenderer.invoke("dialog:selectFolder"),
+  playSound: (filePath) => ipcRenderer.invoke("audio:playSound", filePath),
+  downloadUrl: (url) => ipcRenderer.invoke("memes:downloadUrl", url),
+  fetchAsDataUrl: (url) => ipcRenderer.invoke("fetch:asDataUrl", url),
+  getCachedUsers: () => ipcRenderer.invoke("users:getCached"),
+  exportConfig: () => ipcRenderer.invoke("tools:exportConfig"),
+  importConfig: (data) => ipcRenderer.invoke("tools:importConfig", data),
 
   // Settings & Updater
   getVersion: () => ipcRenderer.invoke("app:get-version"),

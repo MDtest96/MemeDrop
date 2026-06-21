@@ -11,6 +11,7 @@ if (!window.memedrop) {
     getPreview: async (path, kind) => null,
     getTags: async () => [],
     listAllTags: async () => [],
+    getAllTags: async () => ({}),
     setTags: async () => {},
     getFavorites: async () => [],
     getAudioLibrary: async () => [],
@@ -31,8 +32,8 @@ if (!window.memedrop) {
     generateMeme: async () => null,
     getUsers: async () => [],
     getSoundboard: async () => [],
-    searchGiphy: async () => [],
-    trendingGiphy: async () => [],
+    searchGiphy: async () => ({ data: [], pagination: {} }),
+    trendingGiphy: async () => ({ data: [], pagination: {} }),
     downloadGiphy: async () => null,
     sendDropUrl: async () => ({ ok: true }),
     sendDrop: async () => ({ ok: true }),
@@ -56,12 +57,26 @@ if (!window.memedrop) {
     installUpdate: async () => {},
     deleteMemes: async () => [],
     downloadUrl: async () => null,
+    fetchAsDataUrl: async () => null,
     selectFolder: async () => null,
     playSound: async () => {},
     toggleFavorite: async () => [],
     addSoundboard: async () => {},
     removeSoundboard: async () => {},
   };
+}
+
+// ── Preview cache ──────────────────────────────────────────────────────────
+const previewCache = new Map();
+// Helper: cached version of getPreview (contextBridge properties are read-only,
+// so we can't override window.memedrop.getPreview directly)
+function getCachedPreview(path, kind) {
+  const key = path + "::" + (kind || "");
+  if (previewCache.has(key)) return Promise.resolve(previewCache.get(key));
+  return window.memedrop.getPreview(path, kind).then((result) => {
+    if (result) previewCache.set(key, result);
+    return result;
+  });
 }
 
 let allMemes = [];
@@ -71,6 +86,7 @@ let currentQuery = "";
 let selectedMeme = null;
 let allTags = [];
 let activeTagFilter = null;
+let allTagsMap = {}; // { path: [tag1, tag2] }
 let favorites = [];
 let audioLibrary = [];
 let soundboard = [];
@@ -206,7 +222,10 @@ document.querySelectorAll(".studio-tab").forEach((tab) => {
       .forEach((c) => c.classList.add("hidden"));
     const content = document.getElementById("tab-" + tab.dataset.tab);
     if (content) content.classList.remove("hidden");
-    if (tab.dataset.tab === "giphy") loadTrending();
+    if (tab.dataset.tab === "giphy") {
+      isGiphyLoading = false; // Reset in case of previous error
+      loadTrending();
+    }
     if (tab.dataset.tab === "studio") updateStudioPreview();
     if (tab.dataset.tab === "weblink") loadWeblinkTargets();
   });
@@ -241,6 +260,7 @@ document
       if (statusEl) statusEl.textContent = "🔍 Résolution du lien...";
 
       let isUnresolved = false;
+      let resolvedUrl = url;
       let resolvedKind = url.match(/\.mp4$|\.webm$/i)
         ? "video"
         : url.match(/\.gif$/i)
@@ -257,6 +277,7 @@ document
           if (statusEl)
             statusEl.textContent = `✅ ${resolved.kind.toUpperCase()} détecté`;
           resolvedKind = resolved.kind;
+          resolvedUrl = resolved.url; // Use thumbnail/actual media URL for download
         }
       }
 
@@ -269,8 +290,9 @@ document
       };
 
       // Download media to memes folder
+      let downloaded = null;
       try {
-        const downloaded = await window.memedrop.downloadUrl(url);
+        downloaded = await window.memedrop.downloadUrl(url);
         if (downloaded) {
           allMemes.unshift(downloaded);
           renderGrid();
@@ -280,10 +302,16 @@ document
         console.warn("Could not download weblink media locally:", e);
       }
 
+      if (downloaded) {
+        // Open drop panel with the DOWNLOADED file (not the URL)
+        openDropPanel(downloaded);
+      } else {
+        // Fallback: use URL as weblink
+        openDropPanel(pseudoMeme);
+      }
+
       document.getElementById("weblink-url").value = "";
       if (statusEl) statusEl.textContent = "";
-
-      openDropPanel(pseudoMeme);
 
       // We target inputs are removed from DOM so we don't clear them here
     } catch (e) {
@@ -372,6 +400,11 @@ function updateSelectionUI() {
 
 async function deleteSelected() {
   if (selectedPaths.size === 0) return;
+  // Confirmation for multi-delete
+  if (selectedPaths.size > 3) {
+    if (!confirm(`Supprimer ${selectedPaths.size} memes définitivement ?`))
+      return;
+  }
   const paths = Array.from(selectedPaths);
   try {
     const results = await window.memedrop.deleteMemes(paths);
@@ -419,7 +452,12 @@ async function renderGrid() {
   }
   if (currentQuery) {
     const q = currentQuery.toLowerCase();
-    filtered = filtered.filter((m) => m.name.toLowerCase().includes(q));
+    filtered = filtered.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        (allTagsMap[m.path] &&
+          allTagsMap[m.path].some((t) => t.toLowerCase().includes(q))),
+    );
   }
 
   // Clear grid
@@ -487,7 +525,7 @@ async function renderGrid() {
         name: meme.name,
         kind: meme.kind,
       });
-      favorites = newFavs.map(f => f.path);
+      favorites = newFavs.map((f) => f.path);
       renderFavorites();
       renderGrid(); // Refresh to show updated star
       toast(isFav ? "☆ Retiré des favoris" : "⭐ Ajouté aux favoris");
@@ -502,7 +540,7 @@ async function renderGrid() {
       card.appendChild(icon);
     } else {
       try {
-        const preview = await window.memedrop.getPreview(meme.path, meme.kind);
+        const preview = await getCachedPreview(meme.path, meme.kind);
         if (renderId !== currentRenderId) return; // Check again after await
         if (preview) {
           const el =
@@ -526,6 +564,44 @@ async function renderGrid() {
     const name = document.createElement("div");
     name.className = "meme-card-name";
     name.textContent = meme.name;
+    // Double-click to rename
+    name.addEventListener("dblclick", async (e) => {
+      e.stopPropagation();
+      const input = document.createElement("input");
+      input.className = "input";
+      input.value = meme.name;
+      input.style.cssText = "width:100%;font-size:10px;padding:2px 4px;";
+      name.textContent = "";
+      name.appendChild(input);
+      input.focus();
+      input.select();
+      const save = async () => {
+        const newName = input.value.trim();
+        if (newName && newName !== meme.name) {
+          const result = await window.memedrop.renameMeme(meme.path, newName);
+          if (result && result.ok) {
+            meme.name = newName;
+            meme.path = result.path;
+            renderGrid();
+            toast(`✏️ Renommé en ${newName}`);
+          } else {
+            toast("Erreur de renommage", "error");
+          }
+        } else {
+          name.textContent = meme.name;
+        }
+      };
+      input.addEventListener("blur", save);
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          input.blur();
+        }
+        if (ev.key === "Escape") {
+          name.textContent = meme.name;
+        }
+      });
+    });
     card.appendChild(name);
 
     // Section B: Tags display on card
@@ -643,8 +719,10 @@ document.getElementById("btn-side-panel")?.addEventListener("click", () => {
 async function loadTags() {
   try {
     allTags = (await window.memedrop.listAllTags()) || [];
+    allTagsMap = (await window.memedrop.getAllTags()) || {};
   } catch (e) {
     allTags = [];
+    allTagsMap = {};
   }
   renderTags();
 }
@@ -707,7 +785,7 @@ async function loadFavorites() {
   try {
     const raw = (await window.memedrop.getFavorites()) || [];
     // Normalize: backend returns [{ path, name, kind, ts }], keep paths for lookup
-    favorites = raw.map(f => f.path);
+    favorites = raw.map((f) => f.path);
   } catch (e) {
     favorites = [];
   }
@@ -946,8 +1024,8 @@ function renderHistory() {
     item.className = "history-item";
     item.innerHTML = `
       <div class="history-info">
-        <div class="history-target">${entry.target}</div>
-        <div class="history-meme">${entry.name || entry.fileName || ""}</div>
+        <div class="history-target">${entry.from || entry.target || ""}</div>
+        <div class="history-meme">${entry.name || entry.fileName || entry.caption || ""}</div>
       </div>
       <span class="history-time">${entry.ts ? timeAgo(entry.ts) : ""}</span>
     `;
@@ -961,7 +1039,39 @@ function renderHistory() {
   }
 }
 
-// ── Drop Panel ──────────────────────────────────────────────────────────
+// ── Drag & drop files from explorer ───────────────────────────────────────
+// grid is already declared in DOM refs section
+if (grid) {
+  grid.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    grid.classList.add("drag-over");
+  });
+  grid.addEventListener("dragleave", () => {
+    grid.classList.remove("drag-over");
+  });
+  grid.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    grid.classList.remove("drag-over");
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+    let imported = 0;
+    for (const file of files) {
+      try {
+        const result = await window.memedrop.saveFromFile(file.path);
+        if (result) {
+          allMemes.unshift(result);
+          imported++;
+        }
+      } catch {}
+    }
+    if (imported > 0) {
+      renderGrid();
+      toast(`📦 ${imported} fichier(s) importé(s)`);
+    }
+  });
+}
+
+// ── Side panel toggle ─────────────────────────────────────────────────
 async function openDropPanel(meme) {
   selectedMeme = meme;
   panelName.textContent = meme.name;
@@ -993,7 +1103,7 @@ async function openDropPanel(meme) {
     panelPreview.appendChild(d);
   } else {
     try {
-      const preview = await window.memedrop.getPreview(meme.path, meme.kind);
+      const preview = await getCachedPreview(meme.path, meme.kind);
       if (preview) {
         const el =
           meme.kind === "video"
@@ -1118,7 +1228,9 @@ document.getElementById("btn-preview")?.addEventListener("click", async () => {
 document.getElementById("btn-send")?.addEventListener("click", async () => {
   if (!selectedMeme) return;
   // Get selected targets from multi-select
-  const targets = Array.from(panelTarget?.selectedOptions || []).map(o => o.value.trim()).filter(Boolean);
+  const targets = Array.from(panelTarget?.selectedOptions || [])
+    .map((o) => o.value.trim())
+    .filter(Boolean);
   if (targets.length === 0) {
     panelStatus.textContent = "❌ Sélectionne au moins une cible";
     panelStatus.className = "panel-status error";
@@ -1141,7 +1253,9 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
   // Send to all selected targets
   let successCount = 0;
   let lastTarget = "";
-  for (const target of targets) {
+  const localPreview =
+    document.getElementById("panel-local-preview")?.checked ?? true;
+  for (const [idx, target] of targets.entries()) {
     lastTarget = target;
     let result;
     if (selectedMeme.isWeblink) {
@@ -1153,13 +1267,21 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
         kind: selectedMeme.kind,
       });
     } else if (selectedMeme.isCollage) {
-      result = await window.memedrop.sendDrop({
-        target,
-        filePaths: selectedMeme.collagePaths,
-        caption,
-        rain,
-        kind: "image",
-      });
+      // Send each file individually to preserve GIF animation / video
+      let sentCount = 0;
+      for (const fp of selectedMeme.collagePaths) {
+        const r = await window.memedrop.sendDrop({
+          target,
+          filePath: fp,
+          caption: null,
+          rain: null,
+          kind: "image",
+          volume,
+          showLocalPreview: false,
+        });
+        if (r && r.ok) sentCount++;
+      }
+      result = { ok: sentCount > 0, count: sentCount };
     } else {
       result = await window.memedrop.sendDrop({
         target,
@@ -1170,6 +1292,7 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
         kind: selectedMeme.kind,
         volume,
         duration: currentDuration,
+        showLocalPreview: idx === 0 ? localPreview : false,
       });
     }
 
@@ -1226,7 +1349,9 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
     // Section H: Refresh history
     await loadHistory();
 
-    toast(`✅ Drop envoyé à ${targets.length} cible${targets.length > 1 ? 's' : ''}`);
+    toast(
+      `✅ Drop envoyé à ${targets.length} cible${targets.length > 1 ? "s" : ""}`,
+    );
     closeDropPanel();
   } else {
     panelStatus.textContent = `❌ Échec de l'envoi`;
@@ -1237,7 +1362,9 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
 // Copy command
 document.getElementById("btn-copy-cmd")?.addEventListener("click", () => {
   if (!selectedMeme) return;
-  const targets = Array.from(panelTarget?.selectedOptions || []).map(o => o.value.trim()).filter(Boolean);
+  const targets = Array.from(panelTarget?.selectedOptions || [])
+    .map((o) => o.value.trim())
+    .filter(Boolean);
   const target = targets[0] || "@pote";
   const caption = panelCaption.value.trim() || null;
   const rain = panelRain.value.trim() || null;
@@ -1425,35 +1552,66 @@ btnStudioGenerate?.addEventListener("click", async () => {
 });
 
 // ── Section L: GIPHY ──────────────────────────────────────────────────
-btnGiphySearch?.addEventListener("click", async () => {
-  const query = giphySearch?.value.trim();
-  if (!query) return;
-  try {
-    isGiphyLoading = true;
+let giphyOffset = 0;
+let giphyQuery = null;
+let giphyHasMore = true;
+const GIPHY_LIMIT = 24;
+
+async function loadGiphy(query, reset = true) {
+  if (isGiphyLoading) return;
+  if (reset) {
+    giphyOffset = 0;
+    giphyQuery = query;
+    giphyHasMore = true;
     giphyGrid.innerHTML =
       '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Recherche…</p>';
-    const results = (await window.memedrop.searchGiphy(query)) || [];
-    renderGiphyGrid(results);
+  }
+  try {
+    isGiphyLoading = true;
+    let result;
+    if (query) {
+      result = (await window.memedrop.searchGiphy(query, giphyOffset)) || {
+        data: [],
+        pagination: {},
+      };
+    } else {
+      result = (await window.memedrop.trendingGiphy(giphyOffset)) || {
+        data: [],
+        pagination: {},
+      };
+    }
+    const items = result.data || [];
+    const total = result.pagination?.total_count || 0;
+    // Giphy trending API returns total_count=0, assume there's always more
+    giphyHasMore = total === 0 || giphyOffset + GIPHY_LIMIT < total;
+
+    if (reset) {
+      renderGiphyGrid(items);
+    } else {
+      appendGiphyGrid(items);
+    }
+
+    if (reset && items.length === 0) {
+      giphyGrid.innerHTML =
+        '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Aucun résultat</p>';
+    }
   } catch (e) {
-    giphyGrid.innerHTML =
-      '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Erreur de recherche</p>';
+    if (reset)
+      giphyGrid.innerHTML =
+        '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Erreur de chargement</p>';
   } finally {
     isGiphyLoading = false;
   }
+}
+
+btnGiphySearch?.addEventListener("click", () => {
+  const query = giphySearch?.value.trim();
+  if (!query) return;
+  loadGiphy(query, true);
 });
 
 async function loadTrending() {
-  if (isGiphyLoading) return;
-  try {
-    isGiphyLoading = true;
-    const results = (await window.memedrop.trendingGiphy()) || [];
-    renderGiphyGrid(results);
-  } catch (e) {
-    giphyGrid.innerHTML =
-      '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Erreur de chargement</p>';
-  } finally {
-    isGiphyLoading = false;
-  }
+  loadGiphy(null, true);
 }
 
 btnGiphyTrending?.addEventListener("click", loadTrending);
@@ -1462,56 +1620,132 @@ giphySearch?.addEventListener("keydown", (e) => {
   if (e.key === "Enter") btnGiphySearch?.click();
 });
 
-function renderGiphyGrid(results) {
+// Infinite scroll
+let giphyScrollTimer = null;
+giphyGrid?.addEventListener("scroll", () => {
+  clearTimeout(giphyScrollTimer);
+  giphyScrollTimer = setTimeout(() => {
+    if (isGiphyLoading || !giphyHasMore) return;
+    const { scrollTop, scrollHeight, clientHeight } = giphyGrid;
+    if (scrollTop + clientHeight >= scrollHeight - 200) {
+      giphyOffset += GIPHY_LIMIT;
+      loadGiphy(giphyQuery, false);
+    }
+  }, 200);
+});
+
+function appendGiphyGrid(items) {
+  if (!giphyGrid) return;
+  // Remove "loading..." indicator if present
+  const loadingEl = giphyGrid.querySelector(".giphy-loading");
+  if (loadingEl) loadingEl.remove();
+
+  for (const gif of items) {
+    const item = createGiphyItem(gif);
+    if (item) giphyGrid.appendChild(item);
+  }
+
+  if (!giphyHasMore) {
+    const end = document.createElement("p");
+    end.className = "giphy-loading";
+    end.style.cssText =
+      "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:11px;padding:8px";
+    end.textContent = "— Plus de résultats —";
+    giphyGrid.appendChild(end);
+  }
+}
+
+function createGiphyItem(gif) {
+  const item = document.createElement("div");
+  item.className = "giphy-item";
+
+  const img = document.createElement("img");
+  const gifUrl =
+    gif?.images?.fixed_height?.url || gif?.images?.original?.url || "";
+  if (!gifUrl) return null; // Skip invalid GIFs
+  (async () => {
+    try {
+      const dataUrl = await window.memedrop.fetchAsDataUrl(gifUrl);
+      if (dataUrl) {
+        img.src = dataUrl;
+      } else {
+        // Fallback: try direct URL (might be blocked by CSP)
+        img.src = gifUrl;
+      }
+    } catch {
+      // Direct URL as last resort
+      img.src = gifUrl;
+    }
+  })();
+  img.loading = "lazy";
+  img.alt = gif.title || "GIF";
+  // Progress bar for download
+  const progress = document.createElement("div");
+  progress.className = "giphy-progress";
+  progress.style.cssText =
+    "position:absolute;bottom:32px;left:4px;right:4px;height:3px;background:rgba(255,255,255,0.2);border-radius:2px;display:none";
+  const progressFill = document.createElement("div");
+  progressFill.style.cssText =
+    "width:0%;height:100%;background:var(--accent-a);border-radius:2px;transition:width 0.3s";
+  progress.appendChild(progressFill);
+  item.appendChild(progress);
+
+  const dropBtn = document.createElement("button");
+  dropBtn.className = "drop-btn";
+  dropBtn.textContent = "⬇ Drop";
+  const handleGiphyDownload = async () => {
+    progress.style.display = "block";
+    progressFill.style.width = "30%";
+    try {
+      const downloaded = await window.memedrop.downloadGiphy(
+        gif.images?.original?.url || gif.images?.fixed_height?.url,
+      );
+      progressFill.style.width = "100%";
+      setTimeout(() => {
+        progress.style.display = "none";
+        progressFill.style.width = "0%";
+      }, 500);
+      if (downloaded) {
+        allMemes.unshift(downloaded);
+        renderGrid();
+        openDropPanel(downloaded);
+        toast("🌐 GIF importé !");
+      } else {
+        toast("Erreur d'import GIF", "error");
+      }
+    } catch (err) {
+      toast("Erreur d'import GIF", "error");
+    }
+  };
+  dropBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    await handleGiphyDownload();
+  });
+  item.appendChild(dropBtn);
+  item.addEventListener("click", handleGiphyDownload);
+
+  return item;
+}
+
+function renderGiphyGrid(items) {
   if (!giphyGrid) return;
   giphyGrid.innerHTML = "";
-  if (results.length === 0) {
+  if (items.length === 0) {
     giphyGrid.innerHTML =
       '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Aucun résultat</p>';
     return;
   }
-  for (const gif of results) {
-    const item = document.createElement("div");
-    item.className = "giphy-item";
-
-    const img = document.createElement("img");
-    img.src = gif.images?.fixed_height?.url || gif.images?.original?.url || "";
-    img.loading = "lazy";
-    img.alt = gif.title || "GIF";
-    item.appendChild(img);
-
-    const dropBtn = document.createElement("button");
-    dropBtn.className = "drop-btn";
-    dropBtn.textContent = "⬇ Drop";
-    // Shared download logic
-    const handleGiphyDownload = async () => {
-      try {
-        const downloaded = await window.memedrop.downloadGiphy(
-          gif.images?.original?.url || gif.images?.fixed_height?.url,
-        );
-        if (downloaded) {
-          allMemes.unshift(downloaded);
-          renderGrid();
-          openDropPanel(downloaded);
-          toast("🌐 GIF importé !");
-        } else {
-          toast("Erreur d'import GIF", "error");
-        }
-      } catch (err) {
-        toast("Erreur d'import GIF", "error");
-      }
-    };
-
-    dropBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      await handleGiphyDownload();
-    });
-    item.appendChild(dropBtn);
-
-    // Clicking anywhere on the card also triggers download
-    item.addEventListener("click", handleGiphyDownload);
-
-    giphyGrid.appendChild(item);
+  for (const gif of items) {
+    const item = createGiphyItem(gif);
+    if (item) giphyGrid.appendChild(item);
+  }
+  if (items.length >= GIPHY_LIMIT) {
+    const loader = document.createElement("p");
+    loader.className = "giphy-loading";
+    loader.style.cssText =
+      "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:12px;padding:12px";
+    loader.textContent = "⬇ Scrollez pour plus de résultats";
+    giphyGrid.appendChild(loader);
   }
 }
 
@@ -1532,10 +1766,12 @@ async function loadGroups() {
   }
 }
 
-document.getElementById("btn-select-all-targets")?.addEventListener("click", () => {
-  const sel = panelTarget;
-  if (sel) Array.from(sel.options).forEach(o => o.selected = true);
-});
+document
+  .getElementById("btn-select-all-targets")
+  ?.addEventListener("click", () => {
+    const sel = panelTarget;
+    if (sel) Array.from(sel.options).forEach((o) => (o.selected = true));
+  });
 document.getElementById("btn-clear-targets")?.addEventListener("click", () => {
   const sel = panelTarget;
   if (sel) sel.selectedIndex = -1;
@@ -1544,12 +1780,17 @@ document.getElementById("btn-clear-targets")?.addEventListener("click", () => {
 // ── Custom targets ────────────────────────────────────────────────────────
 let customTargets = new Set();
 try {
-  const saved = JSON.parse(localStorage.getItem("memedrop_custom_targets") || "[]");
+  const saved = JSON.parse(
+    localStorage.getItem("memedrop_custom_targets") || "[]",
+  );
   customTargets = new Set(saved);
 } catch {}
 
 function saveCustomTargets() {
-  localStorage.setItem("memedrop_custom_targets", JSON.stringify([...customTargets]));
+  localStorage.setItem(
+    "memedrop_custom_targets",
+    JSON.stringify([...customTargets]),
+  );
 }
 
 // Add custom target
@@ -1562,9 +1803,9 @@ function addCustomTarget() {
   customTargets.add(val);
   saveCustomTargets();
   // Check if already exists in select
-  const exists = Array.from(panelTarget.options).some(o => o.value === val);
+  const exists = Array.from(panelTarget.options).some((o) => o.value === val);
   if (exists) {
-    const opt = Array.from(panelTarget.options).find(o => o.value === val);
+    const opt = Array.from(panelTarget.options).find((o) => o.value === val);
     if (opt) opt.selected = true;
     panelTargetAdd.value = "";
     return;
@@ -1634,6 +1875,28 @@ btnDropGroup?.addEventListener("click", async () => {
     }
   } catch (e) {
     toast("Erreur d'envoi au groupe", "error");
+  }
+});
+
+// Drop à tous les connectés
+document.getElementById("btn-drop-all")?.addEventListener("click", async () => {
+  if (!selectedMeme) return toast("Sélectionne d'abord un meme", "error");
+  if (!confirm(`Envoyer "${selectedMeme.name}" à TOUS les connectés ?`)) return;
+  try {
+    const result = await window.memedrop.sendDrop({
+      target: "@everyone",
+      filePath: selectedMeme.path,
+      kind: selectedMeme.kind,
+      caption: null,
+      rain: null,
+    });
+    if (result && result.ok) {
+      toast(`📤 Envoyé à tous !`);
+    } else {
+      toast("Erreur d'envoi", "error");
+    }
+  } catch (e) {
+    toast("Erreur d'envoi", "error");
   }
 });
 
@@ -2006,8 +2269,10 @@ async function initSettings() {
 
   if (settingTheme) {
     settingTheme.value = settings.theme || "classic";
+    document.body.dataset.theme = settings.theme || "classic";
     settingTheme.addEventListener("change", (e) => {
       window.memedrop.updateSettings({ theme: e.target.value });
+      document.body.dataset.theme = e.target.value;
     });
   }
 
@@ -2037,7 +2302,7 @@ async function initSettings() {
   }
 
   if (settingGiphy) {
-    settingGiphy.value = settings.giphyApiKey || "";
+    settingGiphy.value = settings.giphyApiKey || "A7Su0Alx0oH5dgrDaOicRiEBYqeZGWdX";
     settingGiphy.addEventListener("change", (e) => {
       window.memedrop.updateSettings({ giphyApiKey: e.target.value.trim() });
     });
@@ -2058,6 +2323,52 @@ async function initSettings() {
       setTimeout(() => window.location.reload(), 1000);
     }
   });
+
+  // Export config
+  document
+    .getElementById("btn-export-config")
+    ?.addEventListener("click", async () => {
+      const data = await window.memedrop.exportConfig();
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `memedrop-config-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast("📤 Configuration exportée");
+    });
+
+  // Import config
+  document
+    .getElementById("btn-import-config")
+    ?.addEventListener("click", async () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".json";
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          const result = await window.memedrop.importConfig(data);
+          if (result && result.ok) {
+            toast("📥 Configuration importée, recharge...");
+            setTimeout(() => window.location.reload(), 1000);
+          } else {
+            toast(
+              "Erreur d'import: " + (result?.error || "format invalide"),
+              "error",
+            );
+          }
+        } catch (e) {
+          toast("Erreur de lecture du fichier", "error");
+        }
+      };
+      input.click();
+    });
 
   if (pairingCodeDisplay) {
     pairingCodeDisplay.textContent = settings.linkIdentity || "------";
@@ -2233,15 +2544,30 @@ async function init() {
   try {
     let currentAudio = null;
     window.memedrop.onAudioPlay?.((filePath) => {
-      if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-      const audioUrl = `file:///${filePath.replace(/\\/g, '/')}`;
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+      }
+      const audioUrl = `file:///${filePath.replace(/\\/g, "/")}`;
       const audio = new Audio(audioUrl);
       audio.volume = (currentVolume || 75) / 100;
       audio.play().catch(() => {});
       currentAudio = audio;
     });
   } catch (e) {
-    console.warn('onAudioPlay not available', e);
+    console.warn("onAudioPlay not available", e);
+  }
+
+  // Load cached users list (displays immediately instead of waiting for broadcast)
+  if (window.memedrop.getCachedUsers) {
+    const cached = await window.memedrop.getCachedUsers();
+    if (cached) {
+      const el = document.getElementById("users-count");
+      if (el) {
+        el.textContent = `${cached.count} connectés`;
+        el.title = cached.users.map((u) => u.username).join("\n") || "";
+      }
+    }
   }
 
   // Load trending GIFs if on that tab
@@ -2279,21 +2605,36 @@ document.addEventListener("paste", async (e) => {
 async function loadUsers() {
   try {
     const users = await window.memedrop.getUsers();
-    // Populate multi-target select: Discord users + custom targets
+    const recentTargets = (await window.memedrop.listTargets()) || [];
+    // Populate multi-target select: Discord users + recent targets + custom targets
     if (panelTarget) {
       panelTarget.innerHTML = "";
+      const added = new Set();
+      // Discord users first
       if (users && users.length > 0) {
         users.forEach((u) => {
+          const v = "@" + u.username;
+          added.add(v);
           const opt = document.createElement("option");
-          opt.value = "@" + u.username;
-          opt.textContent = "@" + u.username;
+          opt.value = v;
+          opt.textContent = v;
           panelTarget.appendChild(opt);
         });
       }
+      // Recent targets (not already in Discord users)
+      for (const rt of recentTargets) {
+        if (!added.has(rt)) {
+          added.add(rt);
+          const opt = document.createElement("option");
+          opt.value = rt;
+          opt.textContent = rt;
+          panelTarget.appendChild(opt);
+        }
+      }
       // Add custom targets (persisted in localStorage)
       for (const ct of customTargets) {
-        // Avoid duplicates with Discord users
-        if (!users || !users.some((u) => "@" + u.username === ct)) {
+        if (!added.has(ct)) {
+          added.add(ct);
           const opt = document.createElement("option");
           opt.value = ct;
           opt.textContent = ct;
