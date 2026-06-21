@@ -1,5 +1,5 @@
 @echo off
-echo Lancement du QuickLauncher en mode developpement...
-cd memedrop\quicklauncher
+echo Lancement de l'application unifiée (MemeDrop) en mode developpement...
+cd memedrop\app
 npm run dev
 pause

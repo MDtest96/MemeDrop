@@ -307,6 +307,7 @@ wss.on("connection", (ws) => {
       console.log(
         `[ws] auto-registered user ${userId} (${scope}, ${guildIds.size} guild(s))`,
       );
+      broadcastConnectedUsers();
       return;
     }
 
@@ -528,7 +529,10 @@ wss.on("connection", (ws) => {
       const link = userLinks.get(meta.userId);
       if (link) {
         link.sockets.delete(ws);
-        if (link.sockets.size === 0) userLinks.delete(meta.userId);
+        if (link.sockets.size === 0) {
+          userLinks.delete(meta.userId);
+          broadcastConnectedUsers();
+        }
       }
       // Clean up any extension codes for this user
       for (const [c, uid] of extensionCodes) {
@@ -780,6 +784,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             token: tokenFor(interaction.user.id),
             links: await buildLinksSnapshot(interaction.user.id),
           });
+          broadcastConnectedUsers();
           // Immediately issue a NEW pairing code attached to this linked
           // overlay. The overlay shows it so the user can /link on additional
           // servers without restarting the app.
@@ -1481,10 +1486,32 @@ client.on(Events.InteractionCreate, async (interaction) => {
 client.login(process.env.DISCORD_TOKEN);
 
 process.on("SIGINT", () => {
-  console.log("\n[bot] shutting down…");
+  console.log("\n[bot] shutting down...");
   wss.clients.forEach((ws) => ws.close());
   wss.close();
   httpServer.close();
   client.destroy().finally(() => process.exit(0));
 });
 process.on("SIGTERM", () => process.emit("SIGINT"));
+
+function getConnectedUsersList() {
+  const users = [];
+  for (const userId of userLinks.keys()) {
+    const discordUser = client.users.cache.get(userId);
+    users.push({
+      id: userId,
+      username: discordUser ? discordUser.username : "Inconnu"
+    });
+  }
+  return { count: users.length, users };
+}
+
+function broadcastConnectedUsers() {
+  const { count, users } = getConnectedUsersList();
+  const msg = JSON.stringify({ type: "users:list", count, users });
+  wss.clients.forEach(c => {
+    if (c.readyState === 1) c.send(msg);
+  });
+}
+
+module.exports = { getConnectedUsersList, broadcastConnectedUsers };

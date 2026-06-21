@@ -1035,7 +1035,7 @@ input[type="range"]::-webkit-slider-thumb {
     opacity: 0.8;
     box-shadow: 0 0 10px var(--accent);
 }
-.selected-collage::after {
+.selected-collapse::after {
     content: "?";
     position: absolute;
     top: 8px;
@@ -1049,4 +1049,87 @@ input[type="range"]::-webkit-slider-thumb {
     align-items: center;
     justify-content: center;
     font-weight: bold;
+}
+
+/* ── Grid Selection ─────────────────────────────────────────── */
+.meme-card.selected {
+    outline: 2px solid var(--accent-a);
+    outline-offset: -2px;
+    box-shadow: 0 0 12px rgba(255, 94, 138, 0.3);
+}
+
+.meme-check {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--accent-a);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Selection Action Bar ───────────────────────────────────── */
+.selection-action-bar {
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(26, 18, 48, 0.95);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--border);
+    z-index: 10;
+}
+
+.selection-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+#selected-count {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.danger-btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--error);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.12s;
+}
+.danger-btn:hover {
+    opacity: 0.85;
+}
+
+.ghost-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.12s;
+}
+.ghost-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text);
 }

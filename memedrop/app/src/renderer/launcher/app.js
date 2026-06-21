@@ -5,6 +5,7 @@ if (!window.memedrop) {
   console.warn("Running outside Electron. Mocking window.memedrop");
   window.memedrop = {
     onConnection: () => () => {},
+    onUsersList: () => () => {},
     listMemes: async () => [],
     listTargets: async () => [],
     getPreview: async (path, kind) => null,
@@ -46,10 +47,17 @@ if (!window.memedrop) {
     openMemeFolder: () => {},
     onShortcut: () => () => {},
     onLibraryChanged: () => () => {},
+    getSettings: async () => ({}),
+    updateSettings: async () => {},
+    onUpdateState: () => () => {},
+    checkForUpdates: async () => {},
+    downloadUpdate: async () => {},
+    installUpdate: async () => {},
   };
 }
 
 let allMemes = [];
+let selectedPaths = new Set();
 let currentFilter = "all";
 let currentQuery = "";
 let selectedMeme = null;
@@ -135,21 +143,47 @@ function timeAgo(ts) {
   return `il y a ${days}j`;
 }
 
-// ── Connection ──────────────────────────────────────────────────────────
+// ── Connection ──────────────────────────────────────────────────────────// 🔹 Connection 🔹
 const unsubConn = window.memedrop.onConnection((state) => {
   const statusMap = {
     disconnected: { cls: "conn--disconnected", label: "● Déconnecté" },
     connected: { cls: "conn--connected", label: "● Connecté" },
-    linked: { cls: "conn--linked", label: "● Lié à Discord" },
+    linked: { cls: "conn--linked", label: "🟢 Lié à Discord" },
+    awaiting_link: {
+      cls: "conn--pairing",
+      label: `🔵 Code: ${state.code || "En attente"}`,
+    },
     pairing: {
       cls: "conn--pairing",
-      label: `● ${state.message || "En attente"}`,
+      label: `🔵 Code: ${state.code || "En attente"}`,
     },
   };
   const s = statusMap[state.status] || statusMap.disconnected;
   connStatus.className = `conn-badge ${s.cls}`;
   connStatus.textContent = s.label;
+
+  const pairingDisplay = document.getElementById("pairing-code-display");
+  if (pairingDisplay) {
+    if (state.status === "awaiting_link" || state.status === "pairing") {
+      pairingDisplay.textContent = state.code || "------";
+    } else if (state.status === "linked") {
+      pairingDisplay.textContent = `Lié à ${state.user?.username || "inconnu"}`;
+    } else {
+      pairingDisplay.textContent = "------";
+    }
+  }
 });
+
+if (window.memedrop.onUsersList) {
+  window.memedrop.onUsersList((msg) => {
+    const el = document.getElementById("users-count");
+    if (el) {
+      el.textContent = `${msg.count} connectés`;
+      el.title =
+        msg.users.map((u) => u.username).join("\n") || "Aucun utilisateur";
+    }
+  });
+}
 
 // ── Section A: Tabs ────────────────────────────────────────────────────
 document.querySelectorAll(".studio-tab").forEach((tab) => {
@@ -275,6 +309,69 @@ function createSortUI() {
   sep.parentNode.insertBefore(sortWrap, sep.nextSibling);
 }
 
+// ── Selection helpers ─────────────────────────────────────────────────────
+function toggleSelection(path) {
+  if (selectedPaths.has(path)) {
+    selectedPaths.delete(path);
+  } else {
+    selectedPaths.add(path);
+  }
+  updateSelectionUI();
+}
+
+function clearSelection() {
+  selectedPaths.clear();
+  updateSelectionUI();
+}
+
+function updateSelectionUI() {
+  const bar = document.getElementById("selection-action-bar");
+  const countEl = document.getElementById("selected-count");
+  if (!bar || !countEl) return;
+  const count = selectedPaths.size;
+  if (count > 0) {
+    countEl.textContent = `${count} sélectionné${count > 1 ? "s" : ""}`;
+    bar.classList.remove("hidden");
+  } else {
+    bar.classList.add("hidden");
+  }
+  // Update visual state on cards
+  document.querySelectorAll("#grid .meme-card").forEach((card) => {
+    const path = card.dataset.path;
+    const check = card.querySelector(".meme-check");
+    if (selectedPaths.has(path)) {
+      card.classList.add("selected");
+      if (check) check.style.display = "flex";
+    } else {
+      card.classList.remove("selected");
+      if (check) check.style.display = "none";
+    }
+  });
+}
+
+async function deleteSelected() {
+  if (selectedPaths.size === 0) return;
+  const paths = Array.from(selectedPaths);
+  try {
+    const results = await window.memedrop.deleteMemes(paths);
+    const allOk = results.every((r) => r.ok);
+    if (allOk) {
+      // Remove from local array
+      allMemes = allMemes.filter((m) => !selectedPaths.has(m.path));
+      clearSelection();
+      renderGrid();
+      toast(
+        `🗑 ${results.length} fichier${results.length > 1 ? "s" : ""} supprimé${results.length > 1 ? "s" : ""}`,
+      );
+    } else {
+      const errors = results.filter((r) => !r.ok).length;
+      toast(`Erreur lors de la suppression de ${errors} fichier(s)`, "error");
+    }
+  } catch (e) {
+    toast("Erreur de suppression", "error");
+  }
+}
+
 // ── Load memes ──────────────────────────────────────────────────────────
 async function loadMemes() {
   try {
@@ -285,7 +382,10 @@ async function loadMemes() {
   renderGrid();
 }
 
+let currentRenderId = 0;
 async function renderGrid() {
+  const renderId = ++currentRenderId;
+
   // Filter
   let filtered = allMemes;
   if (currentFilter !== "all") {
@@ -333,6 +433,8 @@ async function renderGrid() {
   // Render cards
   const fragment = document.createDocumentFragment();
   for (const meme of filtered) {
+    if (renderId !== currentRenderId) return; // Abort if a new render started
+
     const card = document.createElement("div");
     card.className = "meme-card";
     card.dataset.path = meme.path;
@@ -345,6 +447,12 @@ async function renderGrid() {
     const kindLabel = { image: "IMG", gif: "GIF", video: "VID", audio: "AUD" };
     badge.textContent = kindLabel[meme.kind] || meme.kind;
     card.appendChild(badge);
+
+    // Selection checkmark overlay
+    const check = document.createElement("div");
+    check.className = "meme-check";
+    check.textContent = "✓";
+    card.appendChild(check);
 
     // Section C: Favorites indicator
     const isFav = favorites.includes(meme.path);
@@ -366,6 +474,7 @@ async function renderGrid() {
     } else {
       try {
         const preview = await window.memedrop.getPreview(meme.path, meme.kind);
+        if (renderId !== currentRenderId) return; // Check again after await
         if (preview) {
           const el =
             meme.kind === "video"
@@ -413,7 +522,7 @@ async function renderGrid() {
       card.appendChild(tagRow);
     }
 
-    card.addEventListener("click", () => {
+    card.addEventListener("click", (e) => {
       if (collageMode) {
         if (collagePaths.length < 4 && !collagePaths.includes(meme.path)) {
           collagePaths.push(meme.path);
@@ -423,6 +532,12 @@ async function renderGrid() {
           const cnt = document.getElementById("collage-count-label");
           if (cnt) cnt.textContent = `${collagePaths.length}/4 images`;
         }
+        return;
+      }
+      // Ctrl/Meta+Click toggles selection, regular click opens drop panel
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        toggleSelection(meme.path);
         return;
       }
       openDropPanel(meme);
@@ -1286,7 +1401,7 @@ function renderGiphyGrid(results) {
     item.className = "giphy-item";
 
     const img = document.createElement("img");
-    img.src = gif.url || gif.images?.fixed_height?.url || "";
+    img.src = gif.images?.fixed_height?.url || gif.images?.original?.url || "";
     img.loading = "lazy";
     img.alt = gif.title || "GIF";
     item.appendChild(img);
@@ -1294,11 +1409,11 @@ function renderGiphyGrid(results) {
     const dropBtn = document.createElement("button");
     dropBtn.className = "drop-btn";
     dropBtn.textContent = "⬇ Drop";
-    dropBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
+    // Shared download logic
+    const handleGiphyDownload = async () => {
       try {
         const downloaded = await window.memedrop.downloadGiphy(
-          gif.url || gif.images?.original?.url,
+          gif.images?.original?.url || gif.images?.fixed_height?.url,
         );
         if (downloaded) {
           allMemes.unshift(downloaded);
@@ -1311,8 +1426,16 @@ function renderGiphyGrid(results) {
       } catch (err) {
         toast("Erreur d'import GIF", "error");
       }
+    };
+
+    dropBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await handleGiphyDownload();
     });
     item.appendChild(dropBtn);
+
+    // Clicking anywhere on the card also triggers download
+    item.addEventListener("click", handleGiphyDownload);
 
     giphyGrid.appendChild(item);
   }
@@ -1576,6 +1699,11 @@ document.addEventListener("drop", async (e) => {
     }
     if (result) {
       allMemes.unshift(result);
+      if (result.kind === "audio") {
+        audioLibrary.unshift(result);
+        renderAudioLibrary();
+        renderAudioSelect();
+      }
     }
   }
   renderGrid();
@@ -1586,6 +1714,339 @@ document.addEventListener("drop", async (e) => {
 
 // ── Toast ───────────────────────────────────────────────────────────────
 // (declared at top)
+
+// ── Settings & Auto-Update ──────────────────────────────────────────────
+async function initSettings() {
+  const settingVolume = document.getElementById("setting-volume");
+  const volumeOut = document.getElementById("volume-out");
+  const settingMusicVolume = document.getElementById("setting-music-volume");
+  const musicVolumeOut = document.getElementById("music-volume-out");
+  const settingServer = document.getElementById("setting-server");
+  const settingAutostart = document.getElementById("setting-autostart");
+  const settingMuteMode = document.getElementById("setting-mute-mode");
+  const settingGiphy = document.getElementById("setting-giphy");
+
+  const settingOpacity = document.getElementById("setting-opacity");
+  const opacityOut = document.getElementById("opacity-out");
+  const settingDuration = document.getElementById("setting-duration");
+  const durationOut = document.getElementById("duration-out");
+  const settingVideoDuration = document.getElementById(
+    "setting-video-duration",
+  );
+  const videoDurationOut = document.getElementById("video-duration-out");
+  const settingSoundOnArrival = document.getElementById(
+    "setting-soundOnArrival",
+  );
+  const settingSpotlightOnDrop = document.getElementById(
+    "setting-spotlightOnDrop",
+  );
+  const settingTheme = document.getElementById("setting-theme");
+  const settingOverlayDisplayId = document.getElementById(
+    "setting-overlayDisplayId",
+  );
+
+  const updateTitle = document.getElementById("update-title");
+  const updateMsg = document.getElementById("update-msg");
+  const updateProgress = document.getElementById("update-progress");
+  const updateProgressFill = document.getElementById("update-progress-fill");
+  const updateCheckBtn = document.getElementById("update-check-btn");
+  const updateDownloadBtn = document.getElementById("update-download-btn");
+  const updateInstallBtn = document.getElementById("update-install-btn");
+
+  const pairingCodeDisplay = document.getElementById("pairing-code-display");
+  const copyCodeBtn = document.getElementById("copy-code-btn");
+  const serversListDisplay = document.getElementById("servers-list-display");
+
+  const settings = await window.memedrop.getSettings();
+
+  if (settingVolume) {
+    settingVolume.value = settings.volume ?? 75;
+    volumeOut.textContent = `${settingVolume.value}%`;
+    settingVolume.addEventListener("input", (e) => {
+      volumeOut.textContent = `${e.target.value}%`;
+    });
+    settingVolume.addEventListener("change", (e) => {
+      window.memedrop.updateSettings({ volume: parseInt(e.target.value, 10) });
+    });
+  }
+
+  if (settingMusicVolume) {
+    settingMusicVolume.value = settings.musicVolume ?? 75;
+    musicVolumeOut.textContent = `${settingMusicVolume.value}%`;
+    settingMusicVolume.addEventListener("input", (e) => {
+      musicVolumeOut.textContent = `${e.target.value}%`;
+    });
+    settingMusicVolume.addEventListener("change", (e) => {
+      window.memedrop.updateSettings({
+        musicVolume: parseInt(e.target.value, 10),
+      });
+    });
+  }
+
+  if (settingServer) {
+    settingServer.value = settings.serverUrl || "";
+    settingServer.addEventListener("change", (e) => {
+      window.memedrop.updateSettings({ serverUrl: e.target.value.trim() });
+    });
+  }
+
+  if (settingAutostart) {
+    settingAutostart.checked = !!settings.autostart;
+    settingAutostart.addEventListener("change", (e) => {
+      window.memedrop.updateSettings({ autostart: e.target.checked });
+    });
+  }
+
+  if (settingMuteMode) {
+    if (settings.paused) {
+      settingMuteMode.value = "pause";
+    } else if (settings.muteUntil === -1) {
+      settingMuteMode.value = "mute-inf";
+    } else if (settings.muteUntil && settings.muteUntil > Date.now()) {
+      settingMuteMode.value = "mute-30"; // Approximatif
+    } else {
+      settingMuteMode.value = "active";
+    }
+
+    settingMuteMode.addEventListener("change", (e) => {
+      const val = e.target.value;
+      if (val === "active") {
+        window.memedrop.updateSettings({ paused: false, muteUntil: null });
+      } else if (val === "pause") {
+        window.memedrop.updateSettings({ paused: true, muteUntil: null });
+      } else if (val === "mute-30") {
+        window.memedrop.updateSettings({
+          paused: false,
+          muteUntil: Date.now() + 30 * 60_000,
+        });
+      } else if (val === "mute-120") {
+        window.memedrop.updateSettings({
+          paused: false,
+          muteUntil: Date.now() + 120 * 60_000,
+        });
+      } else if (val === "mute-inf") {
+        window.memedrop.updateSettings({ paused: false, muteUntil: -1 });
+      }
+    });
+  }
+
+  if (settingOpacity) {
+    settingOpacity.value = settings.opacity ?? 1.0;
+    opacityOut.textContent = `${Math.round(settingOpacity.value * 100)}%`;
+    settingOpacity.addEventListener("input", (e) => {
+      opacityOut.textContent = `${Math.round(e.target.value * 100)}%`;
+    });
+    settingOpacity.addEventListener("change", (e) => {
+      window.memedrop.updateSettings({ opacity: parseFloat(e.target.value) });
+    });
+  }
+
+  if (settingDuration) {
+    settingDuration.value = settings.duration ?? 4;
+    durationOut.textContent = `${settingDuration.value}s`;
+    settingDuration.addEventListener("input", (e) => {
+      durationOut.textContent = `${e.target.value}s`;
+    });
+    settingDuration.addEventListener("change", (e) => {
+      window.memedrop.updateSettings({
+        duration: parseInt(e.target.value, 10),
+      });
+    });
+  }
+
+  if (settingVideoDuration) {
+    settingVideoDuration.value = settings.videoDuration ?? 30;
+    videoDurationOut.textContent = `${settingVideoDuration.value}s`;
+    settingVideoDuration.addEventListener("input", (e) => {
+      videoDurationOut.textContent = `${e.target.value}s`;
+    });
+    settingVideoDuration.addEventListener("change", (e) => {
+      window.memedrop.updateSettings({
+        videoDuration: parseInt(e.target.value, 10),
+      });
+    });
+  }
+
+  if (settingSoundOnArrival) {
+    settingSoundOnArrival.checked = !!settings.soundOnArrival;
+    settingSoundOnArrival.addEventListener("change", (e) => {
+      window.memedrop.updateSettings({ soundOnArrival: e.target.checked });
+    });
+  }
+
+  if (settingSpotlightOnDrop) {
+    settingSpotlightOnDrop.checked = !!settings.spotlightOnDrop;
+    settingSpotlightOnDrop.addEventListener("change", (e) => {
+      window.memedrop.updateSettings({ spotlightOnDrop: e.target.checked });
+    });
+  }
+
+  if (settingTheme) {
+    settingTheme.value = settings.theme || "classic";
+    settingTheme.addEventListener("change", (e) => {
+      window.memedrop.updateSettings({ theme: e.target.value });
+    });
+  }
+
+  if (settingOverlayDisplayId && window.memedrop.listDisplays) {
+    try {
+      const displays = await window.memedrop.listDisplays();
+      settingOverlayDisplayId.innerHTML =
+        '<option value="">Automatique (Écran principal)</option>';
+      displays.forEach((d) => {
+        const opt = document.createElement("option");
+        opt.value = d.id;
+        opt.textContent = d.label + (d.primary ? " (Principal)" : "");
+        settingOverlayDisplayId.appendChild(opt);
+      });
+      settingOverlayDisplayId.value = settings.overlayDisplayId || "";
+
+      settingOverlayDisplayId.addEventListener("change", (e) => {
+        window.memedrop.updateSettings({
+          overlayDisplayId: e.target.value
+            ? parseInt(e.target.value, 10)
+            : null,
+        });
+      });
+    } catch (err) {
+      console.error("Failed to load displays", err);
+    }
+  }
+
+  if (settingGiphy) {
+    settingGiphy.value = settings.giphyApiKey || "";
+    settingGiphy.addEventListener("change", (e) => {
+      window.memedrop.updateSettings({ giphyApiKey: e.target.value.trim() });
+    });
+  }
+
+  if (pairingCodeDisplay) {
+    pairingCodeDisplay.textContent = settings.linkIdentity || "------";
+  }
+
+  if (copyCodeBtn) {
+    copyCodeBtn.addEventListener("click", () => {
+      let codeToCopy = pairingCodeDisplay.textContent || "";
+      if (codeToCopy === "------" || codeToCopy.startsWith("Lié")) {
+        codeToCopy = ""; // Ne rien copier si c'est vide ou déjà lié
+      }
+      navigator.clipboard.writeText(codeToCopy);
+      toast("Code copié !");
+    });
+  }
+
+  if (serversListDisplay) {
+    const guilds = settings.guilds || {};
+    serversListDisplay.innerHTML = "";
+    Object.entries(guilds).forEach(([id, g]) => {
+      const div = document.createElement("div");
+      div.style.display = "flex";
+      div.style.justifyContent = "space-between";
+      div.style.padding = "4px 8px";
+      div.style.background = "#2a2240";
+      div.style.borderRadius = "4px";
+
+      const name = document.createElement("span");
+      name.textContent = g.name;
+
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.checked = !g.disabled;
+      toggle.addEventListener("change", (e) => {
+        const newGuilds = { ...guilds };
+        newGuilds[id].disabled = !e.target.checked;
+        window.memedrop.updateSettings({ guilds: newGuilds });
+      });
+
+      div.appendChild(name);
+      div.appendChild(toggle);
+      serversListDisplay.appendChild(div);
+    });
+  }
+
+  // Update logic
+  window.memedrop.onUpdateState((state) => {
+    const globalBanner = document.getElementById("global-update-banner");
+    const globalText = document.getElementById("global-update-text");
+    const globalBtn = document.getElementById("global-update-btn");
+
+    if (globalBtn && !globalBtn.hasListener) {
+      globalBtn.addEventListener("click", () =>
+        window.memedrop.installUpdate(),
+      );
+      globalBtn.hasListener = true;
+    }
+
+    if (updateTitle) {
+      updateProgress.classList.add("hidden");
+      updateCheckBtn.classList.add("hidden");
+      updateDownloadBtn.classList.add("hidden");
+      updateInstallBtn.classList.add("hidden");
+    }
+
+    if (state.status === "checking") {
+      if (updateMsg) updateMsg.textContent = "Recherche de mise à jour...";
+    } else if (state.status === "available") {
+      if (updateTitle)
+        updateTitle.textContent = `Mise à jour ${state.version} dispo !`;
+      if (updateMsg)
+        updateMsg.textContent =
+          "Une nouvelle version est disponible. Téléchargement auto...";
+      if (globalBanner) {
+        globalBanner.classList.remove("hidden");
+        globalText.textContent = `Téléchargement de la mise à jour ${state.version}...`;
+        globalBtn.classList.add("hidden");
+      }
+    } else if (state.status === "up-to-date") {
+      if (updateMsg) updateMsg.textContent = "L'application est à jour.";
+      if (updateCheckBtn) updateCheckBtn.classList.remove("hidden");
+      if (globalBanner) globalBanner.classList.add("hidden");
+    } else if (state.status === "downloading") {
+      if (updateMsg)
+        updateMsg.textContent = `Téléchargement... ${state.progress}%`;
+      if (updateProgress) {
+        updateProgress.classList.remove("hidden");
+        updateProgressFill.style.width = `${state.progress}%`;
+      }
+      if (globalBanner) {
+        globalBanner.classList.remove("hidden");
+        globalText.textContent = `Téléchargement de la mise à jour... ${state.progress}%`;
+      }
+    } else if (state.status === "downloaded") {
+      if (updateTitle) updateTitle.textContent = "Prêt à installer";
+      if (updateMsg) updateMsg.textContent = "Le téléchargement est terminé.";
+      if (updateInstallBtn) updateInstallBtn.classList.remove("hidden");
+      if (globalBanner) {
+        globalBanner.classList.remove("hidden");
+        globalText.textContent = `Mise à jour ${state.version} prête !`;
+        globalBtn.classList.remove("hidden");
+      }
+    } else if (state.status === "error") {
+      if (updateTitle) updateTitle.textContent = "Erreur";
+      if (updateMsg)
+        updateMsg.textContent =
+          state.error || "Impossible de vérifier les mises à jour.";
+      if (updateCheckBtn) updateCheckBtn.classList.remove("hidden");
+      if (globalBanner) globalBanner.classList.add("hidden");
+    }
+  });
+
+  if (updateCheckBtn) {
+    updateCheckBtn.addEventListener("click", () =>
+      window.memedrop.checkForUpdates(),
+    );
+  }
+  if (updateDownloadBtn) {
+    updateDownloadBtn.addEventListener("click", () =>
+      window.memedrop.downloadUpdate(),
+    );
+  }
+  if (updateInstallBtn) {
+    updateInstallBtn.addEventListener("click", () =>
+      window.memedrop.installUpdate(),
+    );
+  }
+}
 
 // ── Init ────────────────────────────────────────────────────────────────
 async function init() {
@@ -1605,11 +2066,29 @@ async function init() {
     loadTemplates(),
     loadUsers(),
     loadSoundboard(),
+    initSettings(),
   ]);
+
+  // Set App Version
+  try {
+    const version = await window.memedrop.getVersion();
+    const versionEl = document.getElementById("app-version-display");
+    if (versionEl) versionEl.textContent = "v" + version;
+  } catch (e) {
+    console.warn("Failed to get app version", e);
+  }
 
   // Setup listeners
   setupShortcutListener();
   setupFileWatcher();
+
+  // Selection action bar
+  document
+    .getElementById("btn-delete-selected")
+    ?.addEventListener("click", deleteSelected);
+  document
+    .getElementById("btn-clear-selection")
+    ?.addEventListener("click", clearSelection);
 
   // Load trending GIFs if on that tab
   const activeTab = document.querySelector(".studio-tab.active");

@@ -9,10 +9,12 @@
     "build:win": "electron-builder --win portable",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "watch": "node watcher.js"
   },
   "dependencies": {
     "electron-store": "^8.2.0",
+    "jimp": "^1.6.1",
     "ws": "^8.16.0"
   },
   "devDependencies": {
