@@ -2299,7 +2299,7 @@ async function initSettings() {
   }
 
   if (settingGiphy) {
-    settingGiphy.value = settings.giphyApiKey || "";
+    settingGiphy.value = settings.giphyApiKey || "A7Su0Alx0oH5dgrDaOicRiEBYqeZGWdX";
     settingGiphy.addEventListener("change", (e) => {
       window.memedrop.updateSettings({ giphyApiKey: e.target.value.trim() });
     });
