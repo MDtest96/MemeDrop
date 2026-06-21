@@ -73,7 +73,7 @@ const previewCache = new Map();
 function getCachedPreview(path, kind) {
   const key = path + "::" + (kind || "");
   if (previewCache.has(key)) return Promise.resolve(previewCache.get(key));
-  return window.memedrop.getPreview(path, kind).then(result => {
+  return window.memedrop.getPreview(path, kind).then((result) => {
     if (result) previewCache.set(key, result);
     return result;
   });
@@ -399,7 +399,8 @@ async function deleteSelected() {
   if (selectedPaths.size === 0) return;
   // Confirmation for multi-delete
   if (selectedPaths.size > 3) {
-    if (!confirm(`Supprimer ${selectedPaths.size} memes définitivement ?`)) return;
+    if (!confirm(`Supprimer ${selectedPaths.size} memes définitivement ?`))
+      return;
   }
   const paths = Array.from(selectedPaths);
   try {
@@ -448,9 +449,11 @@ async function renderGrid() {
   }
   if (currentQuery) {
     const q = currentQuery.toLowerCase();
-    filtered = filtered.filter((m) =>
-      m.name.toLowerCase().includes(q) ||
-      (allTagsMap[m.path] && allTagsMap[m.path].some(t => t.toLowerCase().includes(q)))
+    filtered = filtered.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        (allTagsMap[m.path] &&
+          allTagsMap[m.path].some((t) => t.toLowerCase().includes(q))),
     );
   }
 
@@ -519,7 +522,7 @@ async function renderGrid() {
         name: meme.name,
         kind: meme.kind,
       });
-      favorites = newFavs.map(f => f.path);
+      favorites = newFavs.map((f) => f.path);
       renderFavorites();
       renderGrid(); // Refresh to show updated star
       toast(isFav ? "☆ Retiré des favoris" : "⭐ Ajouté aux favoris");
@@ -587,8 +590,13 @@ async function renderGrid() {
       };
       input.addEventListener("blur", save);
       input.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") { ev.preventDefault(); input.blur(); }
-        if (ev.key === "Escape") { name.textContent = meme.name; }
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          input.blur();
+        }
+        if (ev.key === "Escape") {
+          name.textContent = meme.name;
+        }
       });
     });
     card.appendChild(name);
@@ -774,7 +782,7 @@ async function loadFavorites() {
   try {
     const raw = (await window.memedrop.getFavorites()) || [];
     // Normalize: backend returns [{ path, name, kind, ts }], keep paths for lookup
-    favorites = raw.map(f => f.path);
+    favorites = raw.map((f) => f.path);
   } catch (e) {
     favorites = [];
   }
@@ -1217,7 +1225,9 @@ document.getElementById("btn-preview")?.addEventListener("click", async () => {
 document.getElementById("btn-send")?.addEventListener("click", async () => {
   if (!selectedMeme) return;
   // Get selected targets from multi-select
-  const targets = Array.from(panelTarget?.selectedOptions || []).map(o => o.value.trim()).filter(Boolean);
+  const targets = Array.from(panelTarget?.selectedOptions || [])
+    .map((o) => o.value.trim())
+    .filter(Boolean);
   if (targets.length === 0) {
     panelStatus.textContent = "❌ Sélectionne au moins une cible";
     panelStatus.className = "panel-status error";
@@ -1240,7 +1250,8 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
   // Send to all selected targets
   let successCount = 0;
   let lastTarget = "";
-  const localPreview = document.getElementById("panel-local-preview")?.checked ?? true;
+  const localPreview =
+    document.getElementById("panel-local-preview")?.checked ?? true;
   for (const [idx, target] of targets.entries()) {
     lastTarget = target;
     let result;
@@ -1335,7 +1346,9 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
     // Section H: Refresh history
     await loadHistory();
 
-    toast(`✅ Drop envoyé à ${targets.length} cible${targets.length > 1 ? 's' : ''}`);
+    toast(
+      `✅ Drop envoyé à ${targets.length} cible${targets.length > 1 ? "s" : ""}`,
+    );
     closeDropPanel();
   } else {
     panelStatus.textContent = `❌ Échec de l'envoi`;
@@ -1346,7 +1359,9 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
 // Copy command
 document.getElementById("btn-copy-cmd")?.addEventListener("click", () => {
   if (!selectedMeme) return;
-  const targets = Array.from(panelTarget?.selectedOptions || []).map(o => o.value.trim()).filter(Boolean);
+  const targets = Array.from(panelTarget?.selectedOptions || [])
+    .map((o) => o.value.trim())
+    .filter(Boolean);
   const target = targets[0] || "@pote";
   const caption = panelCaption.value.trim() || null;
   const rain = panelRain.value.trim() || null;
@@ -1545,15 +1560,22 @@ async function loadGiphy(query, reset = true) {
     giphyOffset = 0;
     giphyQuery = query;
     giphyHasMore = true;
-    giphyGrid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Recherche…</p>';
+    giphyGrid.innerHTML =
+      '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Recherche…</p>';
   }
   try {
     isGiphyLoading = true;
     let result;
     if (query) {
-      result = (await window.memedrop.searchGiphy(query, giphyOffset)) || { data: [], pagination: {} };
+      result = (await window.memedrop.searchGiphy(query, giphyOffset)) || {
+        data: [],
+        pagination: {},
+      };
     } else {
-      result = (await window.memedrop.trendingGiphy(giphyOffset)) || { data: [], pagination: {} };
+      result = (await window.memedrop.trendingGiphy(giphyOffset)) || {
+        data: [],
+        pagination: {},
+      };
     }
     const items = result.data || [];
     const total = result.pagination?.total_count || 0;
@@ -1567,10 +1589,13 @@ async function loadGiphy(query, reset = true) {
     }
 
     if (reset && items.length === 0) {
-      giphyGrid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Aucun résultat</p>';
+      giphyGrid.innerHTML =
+        '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Aucun résultat</p>';
     }
   } catch (e) {
-    if (reset) giphyGrid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Erreur de chargement</p>';
+    if (reset)
+      giphyGrid.innerHTML =
+        '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Erreur de chargement</p>';
   } finally {
     isGiphyLoading = false;
   }
@@ -1620,7 +1645,8 @@ function appendGiphyGrid(items) {
   if (!giphyHasMore) {
     const end = document.createElement("p");
     end.className = "giphy-loading";
-    end.style.cssText = "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:11px;padding:8px";
+    end.style.cssText =
+      "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:11px;padding:8px";
     end.textContent = "— Plus de résultats —";
     giphyGrid.appendChild(end);
   }
@@ -1631,22 +1657,33 @@ function createGiphyItem(gif) {
   item.className = "giphy-item";
 
   const img = document.createElement("img");
-  const gifUrl = gif?.images?.fixed_height?.url || gif?.images?.original?.url || "";
+  const gifUrl =
+    gif?.images?.fixed_height?.url || gif?.images?.original?.url || "";
   if (!gifUrl) return null; // Skip invalid GIFs
   (async () => {
     try {
       const dataUrl = await window.memedrop.fetchAsDataUrl(gifUrl);
-      if (dataUrl) img.src = dataUrl;
-    } catch { img.src = gifUrl; }
+      if (dataUrl) {
+        img.src = dataUrl;
+      } else {
+        // Fallback: try direct URL (might be blocked by CSP)
+        img.src = gifUrl;
+      }
+    } catch {
+      // Direct URL as last resort
+      img.src = gifUrl;
+    }
   })();
   img.loading = "lazy";
   img.alt = gif.title || "GIF";
   // Progress bar for download
   const progress = document.createElement("div");
   progress.className = "giphy-progress";
-  progress.style.cssText = "position:absolute;bottom:32px;left:4px;right:4px;height:3px;background:rgba(255,255,255,0.2);border-radius:2px;display:none";
+  progress.style.cssText =
+    "position:absolute;bottom:32px;left:4px;right:4px;height:3px;background:rgba(255,255,255,0.2);border-radius:2px;display:none";
   const progressFill = document.createElement("div");
-  progressFill.style.cssText = "width:0%;height:100%;background:var(--accent-a);border-radius:2px;transition:width 0.3s";
+  progressFill.style.cssText =
+    "width:0%;height:100%;background:var(--accent-a);border-radius:2px;transition:width 0.3s";
   progress.appendChild(progressFill);
   item.appendChild(progress);
 
@@ -1661,7 +1698,10 @@ function createGiphyItem(gif) {
         gif.images?.original?.url || gif.images?.fixed_height?.url,
       );
       progressFill.style.width = "100%";
-      setTimeout(() => { progress.style.display = "none"; progressFill.style.width = "0%"; }, 500);
+      setTimeout(() => {
+        progress.style.display = "none";
+        progressFill.style.width = "0%";
+      }, 500);
       if (downloaded) {
         allMemes.unshift(downloaded);
         renderGrid();
@@ -1688,7 +1728,8 @@ function renderGiphyGrid(items) {
   if (!giphyGrid) return;
   giphyGrid.innerHTML = "";
   if (items.length === 0) {
-    giphyGrid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Aucun résultat</p>';
+    giphyGrid.innerHTML =
+      '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Aucun résultat</p>';
     return;
   }
   for (const gif of items) {
@@ -1698,7 +1739,8 @@ function renderGiphyGrid(items) {
   if (items.length >= GIPHY_LIMIT) {
     const loader = document.createElement("p");
     loader.className = "giphy-loading";
-    loader.style.cssText = "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:12px;padding:12px";
+    loader.style.cssText =
+      "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:12px;padding:12px";
     loader.textContent = "⬇ Scrollez pour plus de résultats";
     giphyGrid.appendChild(loader);
   }
@@ -1721,10 +1763,12 @@ async function loadGroups() {
   }
 }
 
-document.getElementById("btn-select-all-targets")?.addEventListener("click", () => {
-  const sel = panelTarget;
-  if (sel) Array.from(sel.options).forEach(o => o.selected = true);
-});
+document
+  .getElementById("btn-select-all-targets")
+  ?.addEventListener("click", () => {
+    const sel = panelTarget;
+    if (sel) Array.from(sel.options).forEach((o) => (o.selected = true));
+  });
 document.getElementById("btn-clear-targets")?.addEventListener("click", () => {
   const sel = panelTarget;
   if (sel) sel.selectedIndex = -1;
@@ -1733,12 +1777,17 @@ document.getElementById("btn-clear-targets")?.addEventListener("click", () => {
 // ── Custom targets ────────────────────────────────────────────────────────
 let customTargets = new Set();
 try {
-  const saved = JSON.parse(localStorage.getItem("memedrop_custom_targets") || "[]");
+  const saved = JSON.parse(
+    localStorage.getItem("memedrop_custom_targets") || "[]",
+  );
   customTargets = new Set(saved);
 } catch {}
 
 function saveCustomTargets() {
-  localStorage.setItem("memedrop_custom_targets", JSON.stringify([...customTargets]));
+  localStorage.setItem(
+    "memedrop_custom_targets",
+    JSON.stringify([...customTargets]),
+  );
 }
 
 // Add custom target
@@ -1751,9 +1800,9 @@ function addCustomTarget() {
   customTargets.add(val);
   saveCustomTargets();
   // Check if already exists in select
-  const exists = Array.from(panelTarget.options).some(o => o.value === val);
+  const exists = Array.from(panelTarget.options).some((o) => o.value === val);
   if (exists) {
-    const opt = Array.from(panelTarget.options).find(o => o.value === val);
+    const opt = Array.from(panelTarget.options).find((o) => o.value === val);
     if (opt) opt.selected = true;
     panelTargetAdd.value = "";
     return;
@@ -2273,41 +2322,50 @@ async function initSettings() {
   });
 
   // Export config
-  document.getElementById("btn-export-config")?.addEventListener("click", async () => {
-    const data = await window.memedrop.exportConfig();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `memedrop-config-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    toast("📤 Configuration exportée");
-  });
+  document
+    .getElementById("btn-export-config")
+    ?.addEventListener("click", async () => {
+      const data = await window.memedrop.exportConfig();
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `memedrop-config-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast("📤 Configuration exportée");
+    });
 
   // Import config
-  document.getElementById("btn-import-config")?.addEventListener("click", async () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json";
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const data = JSON.parse(text);
-        const result = await window.memedrop.importConfig(data);
-        if (result && result.ok) {
-          toast("📥 Configuration importée, recharge...");
-          setTimeout(() => window.location.reload(), 1000);
-        } else {
-          toast("Erreur d'import: " + (result?.error || "format invalide"), "error");
+  document
+    .getElementById("btn-import-config")
+    ?.addEventListener("click", async () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".json";
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          const result = await window.memedrop.importConfig(data);
+          if (result && result.ok) {
+            toast("📥 Configuration importée, recharge...");
+            setTimeout(() => window.location.reload(), 1000);
+          } else {
+            toast(
+              "Erreur d'import: " + (result?.error || "format invalide"),
+              "error",
+            );
+          }
+        } catch (e) {
+          toast("Erreur de lecture du fichier", "error");
         }
-      } catch (e) {
-        toast("Erreur de lecture du fichier", "error");
-      }
-    };
-    input.click();
-  });
+      };
+      input.click();
+    });
 
   if (pairingCodeDisplay) {
     pairingCodeDisplay.textContent = settings.linkIdentity || "------";
@@ -2483,15 +2541,18 @@ async function init() {
   try {
     let currentAudio = null;
     window.memedrop.onAudioPlay?.((filePath) => {
-      if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-      const audioUrl = `file:///${filePath.replace(/\\/g, '/')}`;
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+      }
+      const audioUrl = `file:///${filePath.replace(/\\/g, "/")}`;
       const audio = new Audio(audioUrl);
       audio.volume = (currentVolume || 75) / 100;
       audio.play().catch(() => {});
       currentAudio = audio;
     });
   } catch (e) {
-    console.warn('onAudioPlay not available', e);
+    console.warn("onAudioPlay not available", e);
   }
 
   // Load cached users list (displays immediately instead of waiting for broadcast)
