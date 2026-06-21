@@ -1670,6 +1670,7 @@ function createGiphyItem(gif) {
   }).catch(() => {});
   img.loading = "lazy";
   img.alt = gif.title || "GIF";
+  item.appendChild(img);
   // Progress bar for download
   const progress = document.createElement("div");
   progress.className = "giphy-progress";
