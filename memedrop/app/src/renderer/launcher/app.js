@@ -68,15 +68,15 @@ if (!window.memedrop) {
 
 // ── Preview cache ──────────────────────────────────────────────────────────
 const previewCache = new Map();
-const originalGetPreview = window.memedrop.getPreview;
-if (originalGetPreview) {
-  window.memedrop.getPreview = async (path, kind) => {
-    const key = path + "::" + (kind || "");
-    if (previewCache.has(key)) return previewCache.get(key);
-    const result = await originalGetPreview(path, kind);
+// Helper: cached version of getPreview (contextBridge properties are read-only,
+// so we can't override window.memedrop.getPreview directly)
+function getCachedPreview(path, kind) {
+  const key = path + "::" + (kind || "");
+  if (previewCache.has(key)) return Promise.resolve(previewCache.get(key));
+  return window.memedrop.getPreview(path, kind).then(result => {
     if (result) previewCache.set(key, result);
     return result;
-  };
+  });
 }
 
 let allMemes = [];
@@ -534,7 +534,7 @@ async function renderGrid() {
       card.appendChild(icon);
     } else {
       try {
-        const preview = await window.memedrop.getPreview(meme.path, meme.kind);
+        const preview = await getCachedPreview(meme.path, meme.kind);
         if (renderId !== currentRenderId) return; // Check again after await
         if (preview) {
           const el =
@@ -1092,7 +1092,7 @@ async function openDropPanel(meme) {
     panelPreview.appendChild(d);
   } else {
     try {
-      const preview = await window.memedrop.getPreview(meme.path, meme.kind);
+      const preview = await getCachedPreview(meme.path, meme.kind);
       if (preview) {
         const el =
           meme.kind === "video"
@@ -1613,7 +1613,8 @@ function appendGiphyGrid(items) {
   if (loadingEl) loadingEl.remove();
 
   for (const gif of items) {
-    giphyGrid.appendChild(createGiphyItem(gif));
+    const item = createGiphyItem(gif);
+    if (item) giphyGrid.appendChild(item);
   }
 
   if (!giphyHasMore) {
@@ -1630,7 +1631,8 @@ function createGiphyItem(gif) {
   item.className = "giphy-item";
 
   const img = document.createElement("img");
-  const gifUrl = gif.images?.fixed_height?.url || gif.images?.original?.url || "";
+  const gifUrl = gif?.images?.fixed_height?.url || gif?.images?.original?.url || "";
+  if (!gifUrl) return null; // Skip invalid GIFs
   (async () => {
     try {
       const dataUrl = await window.memedrop.fetchAsDataUrl(gifUrl);
@@ -1658,6 +1660,8 @@ function createGiphyItem(gif) {
       const downloaded = await window.memedrop.downloadGiphy(
         gif.images?.original?.url || gif.images?.fixed_height?.url,
       );
+      progressFill.style.width = "100%";
+      setTimeout(() => { progress.style.display = "none"; progressFill.style.width = "0%"; }, 500);
       if (downloaded) {
         allMemes.unshift(downloaded);
         renderGrid();
@@ -1688,7 +1692,8 @@ function renderGiphyGrid(items) {
     return;
   }
   for (const gif of items) {
-    giphyGrid.appendChild(createGiphyItem(gif));
+    const item = createGiphyItem(gif);
+    if (item) giphyGrid.appendChild(item);
   }
   if (items.length >= GIPHY_LIMIT) {
     const loader = document.createElement("p");
@@ -2489,27 +2494,6 @@ async function init() {
     console.warn('onAudioPlay not available', e);
   }
 
-  // Badge notification — compteur de drops reçus
-  let dropCount = 0;
-  const origTitle = document.title || "MemeDrop";
-  if (window.memedrop.onConnection) {
-    window.memedrop.onConnection((state) => {
-      if (state.status === "linked") document.title = origTitle;
-    });
-  }
-  // Listen for incoming drops via history update
-  if (window.memedrop.onUsersList) {
-    // The history-update is sent when a drop is received
-    try {
-      const origHandler = window.memedrop.onLibraryChanged;
-      window.memedrop.onLibraryChanged = (cb) => {
-        dropCount++;
-        document.title = `(${dropCount}) ${origTitle}`;
-        return origHandler ? origHandler(cb) : () => {};
-      };
-    } catch {}
-  }
-
   // Load cached users list (displays immediately instead of waiting for broadcast)
   if (window.memedrop.getCachedUsers) {
     const cached = await window.memedrop.getCachedUsers();
@@ -2522,21 +2506,7 @@ async function init() {
     }
   }
 
-// Badge notification — drops reçus
-let dropCount = 0;
-const origTitle = document.title || "MemeDrop QuickLauncher";
-if (window.memedrop.onConnection) {
-  window.memedrop.onConnection((state) => {
-    if (state.status === "linked") {
-      document.title = origTitle;
-      dropCount = 0;
-    }
-  });
-}
-// Listen for history updates to count drops
-window.memedrop.onUsersList?.(); // just to have the handler registered
-
-// ── Load trending GIFs if on that tab
+  // Load trending GIFs if on that tab
   const activeTab = document.querySelector(".studio-tab.active");
   if (activeTab && activeTab.dataset.tab === "giphy") {
     loadTrending();

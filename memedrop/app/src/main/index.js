@@ -940,15 +940,19 @@ ipcMain.handle("giphy:download", async (e, url) => {
     if (!fs.existsSync(memeFolder))
       fs.mkdirSync(memeFolder, { recursive: true });
 
-    // Generate a unique filename
-    const filename = `giphy_${Date.now()}.gif`;
-    const destPath = path.join(memeFolder, filename);
-
     const { net } = require("electron");
     const res = await net.fetch(url);
+    const contentType = res.headers.get("content-type") || "";
     const buffer = Buffer.from(await res.arrayBuffer());
+    let ext = ".gif";
+    if (contentType.includes("video/mp4")) ext = ".mp4";
+    else if (contentType.includes("video/webm")) ext = ".webm";
+    else if (contentType.includes("image/png")) ext = ".png";
+    else if (contentType.includes("image/jpeg")) ext = ".jpg";
+    else if (contentType.includes("image/webp")) ext = ".webp";
+    const filename = `giphy_${Date.now()}${ext}`;
+    const destPath = path.join(memeFolder, filename);
     fs.writeFileSync(destPath, buffer);
-
     return {
       name: `giphy_${Date.now()}`,
       path: destPath,
