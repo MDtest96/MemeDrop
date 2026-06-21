@@ -333,6 +333,17 @@ function connectWS() {
     setState({ status: "paused", code: null, user: null, links: null });
     return;
   }
+  // Clean old WebSocket to prevent its on("close") from firing after new one connects
+  const oldWs = ws;
+  ws = null;
+  if (oldWs) {
+    try {
+      oldWs.onclose = null;
+      oldWs.onerror = null;
+      oldWs.onmessage = null;
+      oldWs.close();
+    } catch {}
+  }
   const url = store.get("serverUrl");
   setState({ status: "connecting", code: null, user: null, links: null });
 

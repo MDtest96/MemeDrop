@@ -272,8 +272,9 @@ document
       };
 
       // Download media to memes folder
+      let downloaded = null;
       try {
-        const downloaded = await window.memedrop.downloadUrl(url);
+        downloaded = await window.memedrop.downloadUrl(url);
         if (downloaded) {
           allMemes.unshift(downloaded);
           renderGrid();
@@ -283,10 +284,16 @@ document
         console.warn("Could not download weblink media locally:", e);
       }
 
+      if (downloaded) {
+        // Open drop panel with the DOWNLOADED file (not the URL)
+        openDropPanel(downloaded);
+      } else {
+        // Fallback: use URL as weblink
+        openDropPanel(pseudoMeme);
+      }
+
       document.getElementById("weblink-url").value = "";
       if (statusEl) statusEl.textContent = "";
-
-      openDropPanel(pseudoMeme);
 
       // We target inputs are removed from DOM so we don't clear them here
     } catch (e) {
