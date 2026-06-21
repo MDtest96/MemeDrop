@@ -3,8 +3,13 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("memedrop", {
   onConnection: (callback) => {
     const fn = (_e, state) => callback(state);
-    ipcRenderer.on("bot:status", fn);
-    return () => ipcRenderer.off("bot:status", fn);
+    ipcRenderer.on("connection-state", fn);
+    return () => ipcRenderer.off("connection-state", fn);
+  },
+  onUsersList: (callback) => {
+    const fn = (_e, msg) => callback(msg);
+    ipcRenderer.on("users:list", fn);
+    return () => ipcRenderer.off("users:list", fn);
   },
   listMemes: () => ipcRenderer.invoke("memes:list"),
   getPreview: (path, kind) => ipcRenderer.invoke("memes:preview", path, kind),
@@ -77,4 +82,19 @@ contextBridge.exposeInMainWorld("memedrop", {
   },
   buildCollage: (filePaths) => ipcRenderer.invoke("collage:build", filePaths),
   resolveUrl: (url) => ipcRenderer.invoke("url:resolve", url),
+  deleteMemes: (paths) => ipcRenderer.invoke("memes:delete", paths),
+
+  // Settings & Updater
+  getVersion: () => ipcRenderer.invoke("app:get-version"),
+  getSettings: () => ipcRenderer.invoke("settings:get"),
+  updateSettings: (patch) => ipcRenderer.invoke("settings:set", patch),
+  checkForUpdates: () => ipcRenderer.invoke("update:check"),
+  downloadUpdate: () => ipcRenderer.invoke("update:download"),
+  installUpdate: () => ipcRenderer.invoke("update:install"),
+  listDisplays: () => ipcRenderer.invoke("displays:list"),
+  onUpdateState: (callback) => {
+    const fn = (_e, state) => callback(state);
+    ipcRenderer.on("update-state", fn);
+    return () => ipcRenderer.off("update-state", fn);
+  },
 });

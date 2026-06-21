@@ -1,4 +1,4 @@
-// main.js — MemeDrop overlay (Electron main process)
+// main.js — MemeDrop unified app (Main process)
 const {
   app,
   BrowserWindow,
@@ -11,56 +11,37 @@ const {
   globalShortcut,
 } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const WebSocket = require("ws");
-const Store = require("electron-store");
-const { autoUpdater } = require("electron-updater");
+const { setupSettings } = require("./modules/settings");
+const { setupUpdater } = require("./modules/updater");
+const { setupHistory } = require("./modules/history");
+const { setupMemes } = require("./modules/memes");
+const { setupTags } = require("./modules/tags");
+const { setupFavorites } = require("./modules/favorites");
+const { setupAudio } = require("./modules/audio");
+const {
+  formatQuickDropPayload,
+  getPreviewTarget,
+  buildCollage,
+  resolveMediaUrl,
+} = require("./utils");
+const store = require("./store");
 
 const DEFAULT_SERVER =
   process.env.DEFAULT_SERVER || "wss://memedrop-bot-production.up.railway.app";
 
-// Isolate userData path for the agent/dev environment to avoid cache conflicts
-app.setPath('userData', path.join(app.getPath('appData'), 'MemeDrop-Overlay-Agent'));
+// Isolate userData path for the unified agent app
+app.name = "memedrop";
+app.setPath(
+  "userData",
+  path.join(app.getPath("appData"), "MemeDrop-Unified-Agent"),
+);
 
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("disable-background-timer-throttling");
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 
-const store = new Store({
-  defaults: {
-    serverUrl: DEFAULT_SERVER,
-    volume: 0.75,
-    musicVolume: 0.75,
-    opacity: 1.0,
-    duration: 4,
-    videoDuration: 30,
-    soundOnArrival: true,
-    spotlightOnDrop: true,
-    autostart: true,
-    overlayDisplayId: null,
-    // Identité de lien stockée localement → ré-enregistrement auto à chaque
-    // connexion, plus jamais besoin de /link (survit aux redeploys du bot).
-    //   { userId, username, scope:'guild'|'global', guildIds:[...], token,
-    //     blockedUsers:[...] }
-    linkIdentity: null,
-    // Pause manuelle : l'utilisateur a coupé la connexion lui-même depuis les
-    // réglages. L'app reste lancée (tray) mais ne se connecte pas au bot.
-    paused: false,
-    // Mode tranquille : timestamp jusqu'auquel on ignore les drops entrants
-    // (-1 = jusqu'à réactivation manuelle, null = désactivé).
-    muteUntil: null,
-    // Historique local des derniers drops reçus (pour les réglages).
-    dropHistory: [],
-    // Thème visuel de l'overlay : 'classic' | 'neon' | 'fire' | 'mono'.
-    theme: "classic",
-  },
-});
-
-const MAX_HISTORY = 20;
-
-// muteUntil: null = pas de mode tranquille, -1 = jusqu'à réactivation
-// manuelle, sinon un timestamp (ms) jusqu'auquel les drops sont coupés.
-// (-1 plutôt qu'Infinity car electron-store sérialise en JSON, qui ne
-// supporte pas Infinity.)
 function isMuted() {
   const until = store.get("muteUntil");
   if (!until) return false;
@@ -69,28 +50,28 @@ function isMuted() {
   return false;
 }
 
-function recordHistory(payload) {
-  const entry = {
-    from: payload.from?.username || "inconnu",
-    kind: payload.media?.kind || (payload.rain ? "rain" : "unknown"),
-    caption: payload.caption || null,
-    ts: payload.ts || Date.now(),
-  };
-  const history = [entry, ...store.get("dropHistory")].slice(0, MAX_HISTORY);
-  store.set("dropHistory", history);
-  for (const w of BrowserWindow.getAllWindows()) {
-    if (!w.isDestroyed()) w.webContents.send("history-update", history);
-  }
-}
-
+const { recordHistory } = setupHistory(store, {
+  onHistoryUpdate: (history) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send("history-update", history);
+    }
+  },
+});
+setupMemes();
+setupTags(store);
+setupFavorites(store);
+setupAudio(store);
 let overlayWin = null;
-let settingsWin = null;
+let launcherWin = null;
 let tray = null;
 let topGuardTimer = null;
 
 function iconPath() {
   return path.join(
     __dirname,
+    "..",
+    "renderer",
+    "overlay",
     "assets",
     process.platform === "win32" ? "icon.ico" : "icon.png",
   );
@@ -158,7 +139,7 @@ function createOverlayWindow() {
     show: false,
     icon: iconPath(),
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "..", "preload", "overlay.js"),
       contextIsolation: true,
       nodeIntegration: false,
       backgroundThrottling: false,
@@ -175,7 +156,9 @@ function createOverlayWindow() {
       enforceTop();
   });
 
-  overlayWin.loadFile(path.join(__dirname, "src", "overlay.html"));
+  overlayWin.loadFile(
+    path.join(__dirname, "..", "renderer", "overlay", "overlay.html"),
+  );
   overlayWin.once("ready-to-show", () => {
     overlayWin.show();
     enforceTop();
@@ -202,39 +185,39 @@ function repositionOverlay() {
   overlayWin.setBounds(getTargetDisplay().bounds);
 }
 
-function createSettingsWindow() {
-  if (settingsWin && !settingsWin.isDestroyed()) {
-    settingsWin.show();
-    settingsWin.focus();
-    return settingsWin;
+function createLauncherWindow() {
+  if (launcherWin && !launcherWin.isDestroyed()) {
+    launcherWin.show();
+    launcherWin.focus();
+    return launcherWin;
   }
 
-  settingsWin = new BrowserWindow({
-    width: 460,
-    height: 820,
-    minWidth: 420,
-    minHeight: 600,
-    title: "MemeDrop",
+  launcherWin = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    title: "MemeDrop QuickLauncher",
     backgroundColor: "#0e0a1f",
     autoHideMenuBar: true,
     icon: iconPath(),
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "..", "preload", "launcher.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
 
-  settingsWin.loadFile(path.join(__dirname, "src", "settings.html"));
+  launcherWin.loadFile(
+    path.join(__dirname, "..", "renderer", "launcher", "index.html"),
+  );
 
-  settingsWin.on("close", (e) => {
+  launcherWin.on("close", (e) => {
     if (!app.isQuitting) {
       e.preventDefault();
-      settingsWin.hide();
+      launcherWin.hide();
     }
   });
 
-  return settingsWin;
+  return launcherWin;
 }
 
 // `minutes`: falsy → désactive, -1 → jusqu'à réactivation, sinon durée en minutes.
@@ -266,7 +249,7 @@ function rebuildTrayMenu() {
   const menu = Menu.buildFromTemplate([
     { label: "MemeDrop", enabled: false },
     { type: "separator" },
-    { label: "Ouvrir les réglages…", click: () => createSettingsWindow() },
+    { label: "Ouvrir les réglages…", click: () => createLauncherWindow() },
     {
       label: "Afficher / masquer l'overlay",
       click: () => {
@@ -312,7 +295,7 @@ function createTray() {
       : icon.resize({ width: 16, height: 16 }),
   );
   rebuildTrayMenu();
-  tray.on("click", () => createSettingsWindow());
+  tray.on("click", () => createLauncherWindow());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -461,6 +444,11 @@ function connectWS() {
         store.set("linkIdentity", null); // this overlay is no longer linked
         setState({ status: "connecting", code: null, user: null, links: null });
         break;
+      case "users:list":
+        if (launcherWin && !launcherWin.isDestroyed()) {
+          launcherWin.webContents.send("users:list", msg);
+        }
+        break;
       case "drop":
         recordHistory(msg);
         if (isMuted()) break; // mode tranquille : on note le drop mais on ne l'affiche pas
@@ -516,112 +504,26 @@ function scheduleReconnect() {
 //     than a forced background download.
 //   - Periodic re-check every 30 min while the app is open.
 // ─────────────────────────────────────────────────────────────────────────────
-let updateState = {
-  status: "idle",
-  version: null,
-  error: null,
-  progress: null,
-};
-
-function broadcastUpdate() {
-  for (const w of BrowserWindow.getAllWindows()) {
-    if (!w.isDestroyed()) w.webContents.send("update-state", updateState);
-  }
-}
-
-function setUpdateState(patch) {
-  updateState = { ...updateState, ...patch };
-  broadcastUpdate();
-}
-
-autoUpdater.autoDownload = false;
-autoUpdater.autoInstallOnAppQuit = true;
-autoUpdater.logger = console;
-
-autoUpdater.on("checking-for-update", () => {
-  setUpdateState({ status: "checking", error: null });
-});
-
-autoUpdater.on("update-available", (info) => {
-  console.log("[updater] update available:", info.version);
-  setUpdateState({ status: "available", version: info.version, error: null });
-});
-
-autoUpdater.on("update-not-available", () => {
-  setUpdateState({ status: "up-to-date", error: null });
-});
-
-autoUpdater.on("error", (err) => {
-  console.error("[updater] error:", err);
-  setUpdateState({ status: "error", error: err?.message || String(err) });
-});
-
-autoUpdater.on("download-progress", (p) => {
-  setUpdateState({ status: "downloading", progress: Math.round(p.percent) });
-});
-
-autoUpdater.on("update-downloaded", (info) => {
-  console.log("[updater] downloaded:", info.version);
-  setUpdateState({ status: "downloaded", version: info.version });
-});
-
-function checkForUpdates(manual = false) {
-  // Auto-updater only works in packaged builds. During dev (`npm start`) we
-  // skip the check to avoid noise — but show a friendly message if the user
-  // clicked manually.
-  if (!app.isPackaged) {
-    if (manual) {
-      setUpdateState({ status: "dev-mode", error: null });
+const { checkForUpdates } = setupUpdater({
+  onStateChange: (state) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send("update-state", state);
     }
-    return;
-  }
-  try {
-    autoUpdater.checkForUpdates().catch((err) => {
-      setUpdateState({ status: "error", error: err?.message || String(err) });
-    });
-  } catch (err) {
-    setUpdateState({ status: "error", error: err?.message || String(err) });
-  }
-}
+  },
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // IPC
 // ─────────────────────────────────────────────────────────────────────────────
-ipcMain.handle("settings:get", () => ({
-  serverUrl: store.get("serverUrl"),
-  volume: store.get("volume"),
-  musicVolume: store.get("musicVolume"),
-  opacity: store.get("opacity"),
-  duration: store.get("duration"),
-  videoDuration: store.get("videoDuration"),
-  soundOnArrival: store.get("soundOnArrival"),
-  spotlightOnDrop: store.get("spotlightOnDrop"),
-  autostart: store.get("autostart"),
-  overlayDisplayId: store.get("overlayDisplayId"),
-  paused: store.get("paused"),
-  muteUntil: store.get("muteUntil"),
-  theme: store.get("theme"),
-}));
-
-ipcMain.handle("settings:set", (_e, patch) => {
-  for (const [k, v] of Object.entries(patch)) store.set(k, v);
-  if ("autostart" in patch) {
-    // openAsHidden = macOS; args ['--hidden'] = Windows (start to tray, no
-    // settings window) so the app boots silently and connects on its own.
-    app.setLoginItemSettings({
-      openAtLogin: !!patch.autostart,
-      openAsHidden: true,
-      args: ["--hidden"],
-    });
-  }
-  if ("serverUrl" in patch) {
+setupSettings(store, {
+  onServerChanged: () => {
     try {
       ws && ws.close();
     } catch {}
     connectWS();
-  }
-  if ("paused" in patch) {
-    if (patch.paused) {
+  },
+  onPausedChanged: (paused) => {
+    if (paused) {
       try {
         ws && ws.close();
       } catch {}
@@ -633,44 +535,17 @@ ipcMain.handle("settings:set", (_e, patch) => {
     } else {
       connectWS();
     }
-  }
-  if ("overlayDisplayId" in patch) {
+  },
+  onDisplayChanged: () => {
     repositionOverlay();
     enforceTop();
-  }
-  if (
-    overlayWin &&
-    !overlayWin.isDestroyed() &&
-    ("volume" in patch ||
-      "musicVolume" in patch ||
-      "opacity" in patch ||
-      "duration" in patch ||
-      "videoDuration" in patch ||
-      "spotlightOnDrop" in patch ||
-      "theme" in patch)
-  ) {
-    const livePatch = {};
-    if ("volume" in patch) livePatch.volume = patch.volume;
-    if ("musicVolume" in patch) livePatch.musicVolume = patch.musicVolume;
-    if ("opacity" in patch) livePatch.opacity = patch.opacity;
-    if ("duration" in patch) livePatch.duration = patch.duration;
-    if ("videoDuration" in patch) livePatch.videoDuration = patch.videoDuration;
-    if ("spotlightOnDrop" in patch)
-      livePatch.spotlightOnDrop = patch.spotlightOnDrop;
-    if ("theme" in patch) livePatch.theme = patch.theme;
-    overlayWin.webContents.send("settings-update", livePatch);
-  }
-  return true;
+  },
+  onLivePatch: (livePatch) => {
+    if (overlayWin && !overlayWin.isDestroyed()) {
+      overlayWin.webContents.send("settings-update", livePatch);
+    }
+  },
 });
-
-ipcMain.handle("displays:list", () =>
-  screen.getAllDisplays().map((d) => ({
-    id: d.id,
-    label: d.label || `Display ${d.id}`,
-    bounds: d.bounds,
-    primary: d.id === screen.getPrimaryDisplay().id,
-  })),
-);
 
 ipcMain.handle("connection:get", () => connState);
 ipcMain.handle("connection:reconnect", () => {
@@ -707,38 +582,9 @@ ipcMain.handle("mute:set", (_e, minutes) => {
 });
 ipcMain.handle("mute:get", () => (isMuted() ? store.get("muteUntil") : null));
 
-// ── Historique des drops ──────────────────────────────────────────────
-ipcMain.handle("history:get", () => store.get("dropHistory"));
-ipcMain.handle("history:clear", () => {
-  store.set("dropHistory", []);
-  return true;
-});
+// Historique des drops géré par le module history
 
-// App version + update IPC
-ipcMain.handle("app:get-version", () => app.getVersion());
-ipcMain.handle("update:get-state", () => updateState);
-ipcMain.handle("update:check", () => {
-  checkForUpdates(true);
-  return true;
-});
-ipcMain.handle("update:download", () => {
-  if (updateState.status === "available") {
-    autoUpdater
-      .downloadUpdate()
-      .catch((err) =>
-        setUpdateState({ status: "error", error: err?.message || String(err) }),
-      );
-  }
-  return true;
-});
-ipcMain.handle("update:install", () => {
-  if (updateState.status === "downloaded") {
-    // isSilent=true, isForceRunAfter=true → installs cleanly and relaunches
-    autoUpdater.quitAndInstall(true, true);
-  }
-  return true;
-});
-
+// App version + update IPC handled by updater module
 ipcMain.on("test-drop", () => {
   if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
   startTopGuard();
@@ -822,7 +668,7 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => createSettingsWindow());
+  app.on("second-instance", () => createLauncherWindow());
 
   if (process.platform === "win32")
     app.setAppUserModelId("com.memedrop.overlay");
@@ -844,7 +690,7 @@ if (!gotLock) {
     });
 
     createOverlayWindow();
-    if (!startedHidden) createSettingsWindow();
+    if (!startedHidden) createLauncherWindow();
     createTray();
     connectWS();
 
@@ -856,8 +702,8 @@ if (!gotLock) {
     //   Ctrl+Alt+M → DevTools on the overlay window (the transparent one
     //                that actually plays the videos)
     globalShortcut.register("Control+Alt+S", () => {
-      if (settingsWin && !settingsWin.isDestroyed()) {
-        settingsWin.webContents.openDevTools({ mode: "detach" });
+      if (launcherWin && !launcherWin.isDestroyed()) {
+        launcherWin.webContents.openDevTools({ mode: "detach" });
       }
     });
     globalShortcut.register("Control+Alt+M", () => {
@@ -872,7 +718,7 @@ if (!gotLock) {
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {
-        createSettingsWindow();
+        createLauncherWindow();
         createOverlayWindow();
       }
     });
@@ -887,3 +733,209 @@ if (!gotLock) {
     stopTopGuard();
   });
 }
+
+// Meme handlers are managed by memes module
+ipcMain.handle("discord:users", () => [
+  { username: "fatima6848" },
+  { username: "evanlegends" },
+]);
+
+ipcMain.handle("drop:send", async (_e, payload) => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    let formattedPayload;
+
+    // Mode collage : plusieurs chemins fichiers
+    if (Array.isArray(payload.filePaths) && payload.filePaths.length >= 2) {
+      const collage = await buildCollage(payload.filePaths);
+      if (!collage) return { ok: false, error: "Collage impossible" };
+      formattedPayload = {
+        type: "quick_drop",
+        target: payload.target,
+        caption: payload.caption || null,
+        rain: payload.rain || null,
+        media: {
+          data: collage.base64,
+          mime: collage.mime,
+          kind: "image",
+          name: `collage_${Date.now()}.jpg`,
+          size: collage.buffer.length,
+        },
+      };
+    } else {
+      formattedPayload = await formatQuickDropPayload(payload);
+    }
+
+    ws.send(JSON.stringify(formattedPayload));
+
+    // --- Local Playback (Moi non plus fix) ---
+    // So the sender can see their own drop instantly
+    const localDrop = {
+      type: "drop",
+      media: formattedPayload.media
+        ? {
+            url: formattedPayload.media.data
+              ? formattedPayload.media.data.startsWith("data:")
+                ? formattedPayload.media.data
+                : `data:${formattedPayload.media.mime};base64,${formattedPayload.media.data}`
+              : formattedPayload.media.url,
+            kind: formattedPayload.media.kind,
+            mime: formattedPayload.media.mime,
+            name: formattedPayload.media.name,
+            size: formattedPayload.media.size,
+          }
+        : null,
+      caption: formattedPayload.caption,
+      rain: formattedPayload.rain,
+      from: { id: "me", username: "Moi" },
+      ts: Date.now(),
+    };
+
+    if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
+    startTopGuard();
+    enforceTop();
+    overlayWin.webContents.send("drop", {
+      ...localDrop,
+      settings: {
+        volume: store.get("volume"),
+        musicVolume: store.get("musicVolume"),
+      },
+    });
+    // ----------------------------------------
+
+    // Persist target
+    if (payload.target) {
+      let list = store.get("recentTargets") || [];
+      list = [
+        payload.target,
+        ...list.filter((t) => t !== payload.target),
+      ].slice(0, 20);
+      store.set("recentTargets", list);
+    }
+    return { ok: true };
+  }
+  return { ok: false, error: "Not connected" };
+});
+
+// Collage and URL resolvers are handled by memes module
+ipcMain.handle("drop:sendUrl", async (_e, payload) => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const { target, url, caption, rain } = payload;
+    const resolved = await resolveMediaUrl(url);
+
+    const msg = {
+      type: "quick_drop",
+      target,
+      caption: caption || null,
+      rain: rain || null,
+      media: {
+        url: resolved.url,
+        kind: resolved.kind,
+        mime: resolved.mime,
+        name: resolved.url.split("/").pop()?.split("?")[0] || "media",
+        size: 0,
+      },
+    };
+
+    ws.send(JSON.stringify(msg));
+
+    // Persist target in recent list
+    if (target) {
+      let list = store.get("recentTargets") || [];
+      list = [target, ...list.filter((t) => t !== target)].slice(0, 20);
+      store.set("recentTargets", list);
+    }
+    return { ok: true, resolved };
+  }
+  return { ok: false, error: "Not connected" };
+});
+// Tags and favs handled by modules
+// Audio handlers are managed by audio module
+
+ipcMain.handle("streak:get", () => null);
+ipcMain.handle("groups:get", () => []);
+ipcMain.handle("groups:save", () => {});
+ipcMain.handle("groups:drop", () => {});
+ipcMain.handle("schedule:get", () => []);
+ipcMain.handle("schedule:cancel", () => {});
+ipcMain.handle("studio:templates", () => []);
+ipcMain.handle("studio:generate", () => {});
+ipcMain.handle("giphy:search", async (e, query) => {
+  const apiKey = store.get("giphyApiKey") || "A7Su0Alx0oH5dgrDaOicRiEBYqeZGWdX";
+  if (!apiKey) return [];
+  try {
+    const { net } = require("electron");
+    const res = await net.fetch(
+      `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=24`,
+    );
+    const json = await res.json();
+    return json.data || [];
+  } catch (err) {
+    console.error("Giphy Search error:", err);
+    return [];
+  }
+});
+
+ipcMain.handle("giphy:trending", async () => {
+  const apiKey = store.get("giphyApiKey") || "A7Su0Alx0oH5dgrDaOicRiEBYqeZGWdX";
+  if (!apiKey) return [];
+  try {
+    const { net } = require("electron");
+    const res = await net.fetch(
+      `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=24`,
+    );
+    const json = await res.json();
+    return json.data || [];
+  } catch (err) {
+    console.error("Giphy Trending error:", err);
+    return [];
+  }
+});
+
+ipcMain.handle("giphy:download", async (e, url) => {
+  try {
+    const fs = require("fs");
+    const path = require("path");
+    const { app } = require("electron");
+    // Align with memes.js directory for consistency (or use app.getPath('userData'))
+    // Since memes.js uses path.join(__dirname, '..', 'memes'), let's use the same:
+    const memeFolder = path.join(__dirname, "memes");
+    if (!fs.existsSync(memeFolder))
+      fs.mkdirSync(memeFolder, { recursive: true });
+
+    // Generate a unique filename
+    const filename = `giphy_${Date.now()}.gif`;
+    const destPath = path.join(memeFolder, filename);
+
+    const { net } = require("electron");
+    const res = await net.fetch(url);
+    const buffer = Buffer.from(await res.arrayBuffer());
+    fs.writeFileSync(destPath, buffer);
+
+    // Return standard meme object as expected by app.js allMemes
+    return {
+      name: `giphy_${Date.now()}`,
+      path: destPath,
+      kind: "gif",
+    };
+  } catch (err) {
+    console.error("Giphy download error:", err);
+    return null;
+  }
+});
+
+ipcMain.handle("streak:increment", () => {});
+ipcMain.handle("tools:screenshot", () => null);
+ipcMain.handle("drop:preview", async (_e, payload) => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const target = getPreviewTarget(store);
+    if (!target) return { ok: false, error: "Not linked" };
+
+    const previewPayload = { ...payload, target };
+    const formattedPayload = await formatQuickDropPayload(previewPayload);
+    ws.send(JSON.stringify(formattedPayload));
+    return { ok: true };
+  }
+  return { ok: false, error: "Not connected" };
+});
+
+ipcMain.handle("tools:copyCommand", () => {});

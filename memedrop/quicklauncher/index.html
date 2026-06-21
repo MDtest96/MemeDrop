@@ -1,239 +1,391 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <title>MemeDrop QuickLauncher</title>
-    <link rel="stylesheet" href="./style.css">
-</head>
-<body>
-    <div id="toast-container" class="toast-container"></div>
-    
-    <!-- Topbar -->
-    <div class="topbar">
-        <div class="topbar-left">
-            <div class="logo">💧</div>
-            <div class="title">MemeDrop</div>
-        </div>
-        <div class="topbar-center">
-            <div class="search-wrap">
-                <span class="search-icon">🔍</span>
-                <input type="text" id="search" class="search-input" placeholder="Rechercher un meme...">
+    <head>
+        <meta charset="UTF-8" />
+        <title>MemeDrop QuickLauncher</title>
+        <link rel="stylesheet" href="./style.css" />
+    </head>
+    <body>
+        <div id="toast-container" class="toast-container"></div>
+
+        <!-- Topbar -->
+        <div class="topbar">
+            <div class="topbar-left">
+                <div class="logo">💧</div>
+                <div class="title">MemeDrop</div>
             </div>
-        </div>
-        <div class="topbar-right">
-            <div id="conn-status" class="conn-badge conn--disconnected">● Déconnecté</div>
-            <div id="meme-count" class="meme-count">0 memes</div>
-            <button class="tb-btn" id="btn-side-panel">☰</button>
-        </div>
-    </div>
-
-    <!-- Toolbar -->
-    <div class="toolbar">
-        <div class="toolbar-left">
-            <button class="tb-btn" id="btn-open-folder" title="Ouvrir le dossier Memes">📁</button>
-            <button class="tb-btn" id="btn-clipboard" title="Coller du presse-papier">📋</button>
-            <div class="tb-sep"></div>
-            <button class="tb-btn" id="btn-refresh" title="Actualiser">🔄</button>
-        </div>
-        
-        <div class="studio-tabs">
-            <button class="studio-tab active" data-tab="grid">Grid</button>
-            <button class="studio-tab" data-tab="studio">Studio</button>
-            <button class="studio-tab" data-tab="giphy">GIF Search</button>
-            <button class="studio-tab" data-tab="weblink">Lien Web</button>
-            <button class="studio-tab" data-tab="roulette">Roulette</button>
-        </div>
-    </div>
-
-    <!-- Main Views -->
-    
-    <!-- GRID -->
-    <div id="tab-grid" class="tab-content">
-        <div id="grid-empty" class="grid-empty hidden">Aucun meme</div>
-        <div id="grid" class="grid"></div>
-    </div>
-    
-    <!-- STUDIO -->
-    <div id="tab-studio" class="tab-content hidden" style="padding: 16px;">
-        <div class="studio-inputs" style="display:flex; flex-direction:column; gap:8px;">
-            <select id="studio-template" class="input"></select>
-            <input type="text" id="studio-top-text" class="input" placeholder="Texte Haut">
-            <input type="text" id="studio-bottom-text" class="input" placeholder="Texte Bas">
-            <button id="btn-studio-generate" class="primary" style="padding:8px">Générer Meme</button>
-        </div>
-        <div class="studio-canvas" style="margin-top:16px; text-align:center;">
-            <img id="studio-preview" style="max-width:100%; border-radius:8px;">
-        </div>
-    </div>
-
-    <!-- GIPHY -->
-    <div id="tab-giphy" class="tab-content hidden" style="padding: 16px;">
-        <div style="display:flex; gap:8px; margin-bottom:16px;">
-            <input type="text" id="giphy-search" class="input flex-1" placeholder="Chercher un GIF...">
-            <button id="btn-giphy-search" class="primary" style="padding:0 12px">Go</button>
-            <button id="btn-giphy-trending" class="ghost" style="padding:0 12px">Trending</button>
-        </div>
-        <div id="giphy-grid" class="giphy-grid"></div>
-    </div>
-
-    <!-- LIEN WEB -->
-    <div id="tab-weblink" class="tab-content hidden" style="padding: 16px;">
-        <h3 style="margin-bottom:12px">Envoyer un lien Web</h3>
-        <div style="display:flex; flex-direction:column; gap:12px;">
-            <input type="text" id="weblink-url" class="input" placeholder="URL directe (ex: .mp4, .gif)">
-            <input type="text" id="weblink-target" class="input" placeholder="Cible (@pseudo)">
-            <input type="text" id="weblink-caption" class="input" placeholder="Légende (optionnel)">
-            <label style="display:flex; align-items:center; gap:8px;">
-                <input type="checkbox" id="weblink-rain"> Mode Pluie
-            </label>
-            <button id="btn-weblink-send" class="primary" style="padding:10px">Envoyer le lien</button>
-        </div>
-    </div>
-
-    <!-- ROULETTE -->
-    <div id="tab-roulette" class="tab-content hidden" style="padding: 16px; text-align:center;">
-        <button id="btn-roulette-spin" class="primary" style="padding:10px 20px; font-size:16px;">Lancer la Roulette !</button>
-        <div id="roulette-meme" class="roulette-meme" style="margin:20px 0;"></div>
-        <div style="display:flex; gap:8px; justify-content:center;">
-            <input type="text" id="roulette-target" class="input" placeholder="Cible (@pseudo)" style="max-width:200px">
-            <button id="btn-roulette-send" class="primary" style="padding:0 16px">Drop Aléatoire</button>
-        </div>
-    </div>
-
-    <!-- SIDE PANEL -->
-    <div id="side-panel" class="side-panel hidden">
-        <section>
-            <h3>Tags</h3>
-            <ul id="tag-list" class="tag-list" style="list-style:none; padding:0; margin-bottom:8px;"></ul>
-            <div class="tag-input-bar" style="display:flex; gap:4px">
-                <input type="text" id="tag-input" class="input" placeholder="Tag...">
-                <button id="btn-tag-add" class="primary" style="padding:0 8px">+</button>
-            </div>
-        </section>
-        
-        <section>
-            <h3>Favoris</h3>
-            <div id="favorites-list" style="display:flex; flex-direction:column; gap:4px"></div>
-        </section>
-
-        <section>
-            <h3>Audio / Soundboard</h3>
-            <select id="audio-library" class="input" style="margin-bottom:8px; width:100%"></select>
-            <button id="btn-soundboard-add" class="ghost" style="width:100%; padding:4px">Lier Audio</button>
-            <ul id="soundboard-list" class="soundboard-list" style="list-style:none; padding:0; margin-top:8px;"></ul>
-        </section>
-        
-        <section>
-            <h3>Historique & Streaks</h3>
-            <div id="streak-counter" class="streak-counter" style="margin-bottom:8px">🔥 Streak: 0</div>
-            <ul id="history-list" style="list-style:none; padding:0; display:flex; flex-direction:column; gap:4px"></ul>
-            <h3 style="margin-top:12px">Planifiés</h3>
-            <ul id="scheduled-list" style="list-style:none; padding:0;"></ul>
-        </section>
-
-        <section>
-            <h3>Groupes</h3>
-            <select id="group-select" class="input group-select" style="margin-bottom:8px; width:100%"></select>
-            <div style="display:flex; gap:4px">
-                <button id="btn-save-group" class="ghost flex-1">Sauver</button>
-                <button id="btn-drop-group" class="primary flex-1">Drop</button>
-            </div>
-        </section>
-    </div>
-
-    <!-- DROP PANEL -->
-    <div id="drop-panel" class="drop-panel hidden">
-        <div class="panel-backdrop" id="panel-close-bg"></div>
-        <div class="panel">
-            <div class="panel-header">
-                <h3>Envoyer Meme</h3>
-                <div class="panel-close" id="btn-panel-close">✕</div>
-            </div>
-            <div class="panel-preview">
-                <img id="panel-preview-img">
-            </div>
-            <div class="panel-info">
-                <div class="panel-name" id="panel-name">Nom du fichier</div>
-                <div class="panel-meta" id="panel-meta">Taille / Format</div>
-            </div>
-            <div class="panel-body">
-                <div class="field">
-                    <label>Cible</label>
-                    <input type="text" id="panel-target" class="input" placeholder="@pseudo ou id" list="target-suggestions">
-                    <datalist id="target-suggestions"></datalist>
+            <div class="topbar-center">
+                <div class="search-wrap">
+                    <span class="search-icon">🔍</span>
+                    <input
+                        type="text"
+                        id="search"
+                        class="search-input"
+                        placeholder="Rechercher un meme..."
+                    />
                 </div>
-                <div class="field">
-                    <label>Légende</label>
-                    <input type="text" id="panel-caption" class="input" placeholder="Message avec le drop...">
+            </div>
+            <div class="topbar-right">
+                <div id="conn-status" class="conn-badge conn--disconnected">
+                    ● Déconnecté
                 </div>
-                <div class="field-row">
-                    <div class="field flex-1">
-                        <label>Audio</label>
-                        <select id="panel-audio-select" class="input"></select>
+                <div id="meme-count" class="meme-count">0 memes</div>
+                <button class="tb-btn" id="btn-side-panel">☰</button>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <button
+                    class="tb-btn"
+                    id="btn-open-folder"
+                    title="Ouvrir le dossier Memes"
+                >
+                    📁
+                </button>
+                <button
+                    class="tb-btn"
+                    id="btn-clipboard"
+                    title="Coller du presse-papier"
+                >
+                    📋
+                </button>
+                <div class="tb-sep"></div>
+                <button class="tb-btn" id="btn-refresh" title="Actualiser">
+                    🔄
+                </button>
+                <div class="tb-sep"></div>
+                <button
+                    class="tb-btn"
+                    id="btn-collage-mode"
+                    title="Sélectionner plusieurs images pour un collage"
+                >
+                    🖼️ Collage
+                </button>
+            </div>
+            <div id="collage-bar" class="collage-bar hidden">
+                <span id="collage-count-label">0/4 images</span>
+                <button
+                    id="btn-send-collage"
+                    class="primary"
+                    style="padding: 4px 14px"
+                >
+                    📤 Envoyer le collage
+                </button>
+                <button
+                    id="btn-clear-collage"
+                    class="tb-btn"
+                    title="Annuler le mode collage"
+                >
+                    ✕
+                </button>
+            </div>
+
+            <div class="studio-tabs">
+                <button class="studio-tab active" data-tab="grid">Grid</button>
+                <button class="studio-tab" data-tab="studio">Studio</button>
+                <button class="studio-tab" data-tab="giphy">GIF Search</button>
+                <button class="studio-tab" data-tab="weblink">Lien Web</button>
+            </div>
+        </div>
+
+        <!-- Main Views -->
+
+        <!-- GRID -->
+        <div id="tab-grid" class="tab-content">
+            <div id="grid-empty" class="grid-empty hidden">Aucun meme</div>
+            <div id="grid" class="grid"></div>
+        </div>
+
+        <!-- STUDIO -->
+        <div id="tab-studio" class="tab-content hidden" style="padding: 16px">
+            <div
+                class="studio-inputs"
+                style="display: flex; flex-direction: column; gap: 8px"
+            >
+                <select id="studio-template" class="input"></select>
+                <input
+                    type="text"
+                    id="studio-top-text"
+                    class="input"
+                    placeholder="Texte Haut"
+                />
+                <input
+                    type="text"
+                    id="studio-bottom-text"
+                    class="input"
+                    placeholder="Texte Bas"
+                />
+                <button
+                    id="btn-studio-generate"
+                    class="primary"
+                    style="padding: 8px"
+                >
+                    Générer Meme
+                </button>
+            </div>
+            <div
+                class="studio-canvas"
+                style="margin-top: 16px; text-align: center"
+            >
+                <canvas
+                    id="studio-preview"
+                    width="480"
+                    height="270"
+                    style="
+                        max-width: 100%;
+                        border-radius: 8px;
+                        background: #1a1230;
+                    "
+                ></canvas>
+            </div>
+        </div>
+
+        <!-- GIPHY -->
+        <div id="tab-giphy" class="tab-content hidden" style="padding: 16px">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px">
+                <input
+                    type="text"
+                    id="giphy-search"
+                    class="input flex-1"
+                    placeholder="Chercher un GIF..."
+                />
+                <button
+                    id="btn-giphy-search"
+                    class="primary"
+                    style="padding: 0 12px"
+                >
+                    Go
+                </button>
+                <button
+                    id="btn-giphy-trending"
+                    class="ghost"
+                    style="padding: 0 12px"
+                >
+                    Trending
+                </button>
+            </div>
+            <div id="giphy-grid" class="giphy-grid"></div>
+        </div>
+
+        <!-- LIEN WEB -->
+        <div id="tab-weblink" class="tab-content hidden" style="padding: 16px">
+            <h3 style="margin-bottom: 12px">Préparer un lien Web</h3>
+            <div style="display: flex; flex-direction: column; gap: 12px">
+                <input
+                    type="text"
+                    id="weblink-url"
+                    class="input"
+                    placeholder="URL du lien (ex: Twitter, YouTube, .mp4, .gif)"
+                />
+                <div
+                    id="weblink-resolve-status"
+                    style="
+                        font-size: 12px;
+                        color: var(--text-dim);
+                        min-height: 18px;
+                    "
+                ></div>
+                <button
+                    id="btn-weblink-send"
+                    class="primary"
+                    style="padding: 10px"
+                >
+                    ➡️ Configurer le Drop
+                </button>
+            </div>
+        </div>
+
+        <!-- WEBLINK -->
+        <!-- SIDE PANEL -->
+        <div id="side-panel" class="side-panel hidden">
+            <section>
+                <h3>Tags</h3>
+                <ul
+                    id="tag-list"
+                    class="tag-list"
+                    style="list-style: none; padding: 0; margin-bottom: 8px"
+                ></ul>
+                <div class="tag-input-bar" style="display: flex; gap: 4px">
+                    <input
+                        type="text"
+                        id="tag-input"
+                        class="input"
+                        placeholder="Tag..."
+                    />
+                    <button
+                        id="btn-tag-add"
+                        class="primary"
+                        style="padding: 0 8px"
+                    >
+                        +
+                    </button>
+                </div>
+            </section>
+
+            <section>
+                <h3>Favoris</h3>
+                <div
+                    id="favorites-list"
+                    style="display: flex; flex-direction: column; gap: 4px"
+                ></div>
+            </section>
+
+            <section>
+                <h3>Audio / Soundboard</h3>
+                <div
+                    id="audio-library"
+                    class="grid"
+                    style="margin-bottom: 8px"
+                ></div>
+                <button
+                    id="btn-soundboard-add"
+                    class="ghost"
+                    style="width: 100%; padding: 4px"
+                >
+                    Lier Audio
+                </button>
+                <ul
+                    id="soundboard-list"
+                    class="soundboard-list"
+                    style="list-style: none; padding: 0; margin-top: 8px"
+                ></ul>
+            </section>
+
+            <section>
+                <h3>Historique & Streaks</h3>
+                <div
+                    id="streak-counter"
+                    class="streak-counter"
+                    style="margin-bottom: 8px"
+                >
+                    🔥 Streak: 0
+                </div>
+                <ul
+                    id="history-list"
+                    style="
+                        list-style: none;
+                        padding: 0;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 4px;
+                    "
+                ></ul>
+                <h3 style="margin-top: 12px">Planifiés</h3>
+                <ul
+                    id="scheduled-list"
+                    style="list-style: none; padding: 0"
+                ></ul>
+            </section>
+
+            <section>
+                <h3>Groupes</h3>
+                <select
+                    id="group-select"
+                    class="input group-select"
+                    style="margin-bottom: 8px; width: 100%"
+                ></select>
+                <div style="display: flex; gap: 4px">
+                    <button id="btn-save-group" class="ghost flex-1">
+                        Sauver
+                    </button>
+                    <button id="btn-drop-group" class="primary flex-1">
+                        Drop
+                    </button>
+                </div>
+            </section>
+        </div>
+
+        <!-- DROP PANEL -->
+        <div id="drop-panel" class="drop-panel hidden">
+            <div class="panel-backdrop" id="panel-close-bg"></div>
+            <div class="panel">
+                <div class="panel-header">
+                    <h3>Envoyer Meme</h3>
+                    <div class="panel-close" id="btn-panel-close">✕</div>
+                </div>
+                <div id="panel-preview" class="panel-preview">
+                    <img id="panel-preview-img" />
+                </div>
+                <div class="panel-info">
+                    <div class="panel-name" id="panel-name">Nom du fichier</div>
+                    <div class="panel-meta" id="panel-meta">
+                        Taille / Format
                     </div>
-                    <div class="field" style="width: 80px;">
-                        <label>Vol.</label>
-                        <input type="range" id="panel-volume" min="0" max="100" value="100" style="width:100%">
+                </div>
+                <div class="panel-body">
+                    <div class="field">
+                        <label>Cible</label>
+                        <input
+                            type="text"
+                            id="panel-target"
+                            class="input"
+                            placeholder="@pseudo ou id"
+                            list="target-suggestions"
+                        />
+                        <datalist id="target-suggestions"></datalist>
+                    </div>
+                    <div class="field">
+                        <label>Légende</label>
+                        <input
+                            type="text"
+                            id="panel-caption"
+                            class="input"
+                            placeholder="Message avec le drop..."
+                        />
+                    </div>
+                    <div class="field-row">
+                        <div class="field flex-1">
+                            <label>Audio</label>
+                            <select
+                                id="panel-audio-select"
+                                class="input"
+                            ></select>
+                        </div>
+                        <div class="field" style="width: 80px">
+                            <label>Vol.</label>
+                            <input
+                                type="range"
+                                id="panel-volume"
+                                min="0"
+                                max="100"
+                                value="100"
+                                style="width: 100%"
+                            />
+                        </div>
+                    </div>
+                    <div class="field" style="margin-top: 8px">
+                        <label
+                            style="
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                cursor: pointer;
+                            "
+                        >
+                            <input type="checkbox" id="panel-rain" /> Mode Pluie
+                            (Spam)
+                        </label>
                     </div>
                 </div>
-                <div class="field" style="margin-top:8px">
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                        <input type="checkbox" id="panel-rain"> Mode Pluie (Spam)
-                    </label>
+                <div class="panel-status" id="panel-status"></div>
+                <div class="panel-footer">
+                    <button class="ghost" id="btn-preview">Aperçu</button>
+                    <button class="primary btn-send" id="btn-send">
+                        Envoyer le Drop
+                    </button>
                 </div>
             </div>
-            <div class="panel-status" id="panel-status"></div>
-            <div class="panel-footer">
-                <button class="ghost" id="btn-preview">Aperçu</button>
-                <button class="primary btn-send" id="btn-send">Envoyer le Drop</button>
+        </div>
+
+        <!-- Drag Overlay -->
+        <div id="dropzone" class="dropzone hidden">
+            <div class="dropzone-content">
+                <p>Glissez vos memes ici</p>
             </div>
         </div>
-    </div>
 
-    <!-- Drag Overlay -->
-    <div id="dropzone" class="dropzone hidden">
-        <div class="dropzone-content">
-            <p>Glissez vos memes ici</p>
-        </div>
-    </div>
-
-    <!-- Weblink Script Addon -->
-    <script>
-      document.addEventListener("DOMContentLoaded", () => {
-         const btnWebLinkSend = document.getElementById("btn-weblink-send");
-         if (btnWebLinkSend) {
-           btnWebLinkSend.addEventListener("click", async () => {
-             const target = document.getElementById("weblink-target").value;
-             const url = document.getElementById("weblink-url").value;
-             const caption = document.getElementById("weblink-caption").value;
-             const rain = document.getElementById("weblink-rain").checked;
-             
-             if (!url || !target) {
-               alert("URL et Cible sont requis !");
-               return;
-             }
-             
-             btnWebLinkSend.textContent = "Envoi...";
-             btnWebLinkSend.disabled = true;
-             
-             try {
-                let kind = "image";
-                if(url.includes(".mp4") || url.includes(".webm")) kind = "video";
-                if(url.includes(".gif")) kind = "gif";
-                
-                const res = await window.memedrop.sendDropUrl({ url, target, caption, rain, kind });
-                if(res.ok) alert("Lien envoyé !");
-                else alert("Erreur: " + res.error);
-             } catch(e) {
-                alert("Erreur lors de l'envoi");
-             }
-             
-             btnWebLinkSend.textContent = "Envoyer le lien";
-             btnWebLinkSend.disabled = false;
-           });
-         }
-      });
-    </script>
-    <script src="./app.js" type="module"></script>
-</body>
+        <script src="./app.js" type="module"></script>
+    </body>
 </html>
