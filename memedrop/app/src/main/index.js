@@ -1010,10 +1010,47 @@ ipcMain.handle("giphy:download", async (e, url) => {
       } catch (err) {
         console.error("Fetch proxy error:", err);
         return null;
-      }
-    });
+      });
 
-    // ── Dialog: select folder ────────────────────────────────────────────────
+      // ── Export/import config ────────────────────────────────────────────────────
+      ipcMain.handle("tools:exportConfig", async () => {
+        const data = {
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          settings: {
+            serverUrl: store.get("serverUrl"),
+            volume: store.get("volume"),
+            duration: store.get("duration"),
+            videoDuration: store.get("videoDuration"),
+            giphyApiKey: store.get("giphyApiKey"),
+            memeFolderPath: store.get("memeFolderPath"),
+            theme: store.get("theme"),
+          },
+          tags: store.get("tags"),
+          favorites: store.get("favorites"),
+          groups: store.get("groups"),
+          audioPairings: store.get("audioPairings"),
+        };
+        return data;
+      });
+
+      ipcMain.handle("tools:importConfig", async (_e, data) => {
+        try {
+          if (!data || !data.version) return { ok: false, error: "Format invalide" };
+          if (data.settings) {
+            for (const [k, v] of Object.entries(data.settings)) store.set(k, v);
+          }
+          if (data.tags) store.set("tags", data.tags);
+          if (data.favorites) store.set("favorites", data.favorites);
+          if (data.groups) store.set("groups", data.groups);
+          if (data.audioPairings) store.set("audioPairings", data.audioPairings);
+          return { ok: true };
+        } catch (err) {
+          return { ok: false, error: err.message };
+        }
+      });
+
+      // ── Dialog: select folder ────────────────────────────────────────────────
 ipcMain.handle("dialog:selectFolder", async () => {
   const { dialog } = require("electron");
   const result = await dialog.showOpenDialog({

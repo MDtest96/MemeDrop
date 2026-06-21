@@ -244,6 +244,7 @@ document
       if (statusEl) statusEl.textContent = "🔍 Résolution du lien...";
 
       let isUnresolved = false;
+      let resolvedUrl = url;
       let resolvedKind = url.match(/\.mp4$|\.webm$/i)
         ? "video"
         : url.match(/\.gif$/i)
@@ -260,6 +261,7 @@ document
           if (statusEl)
             statusEl.textContent = `✅ ${resolved.kind.toUpperCase()} détecté`;
           resolvedKind = resolved.kind;
+          resolvedUrl = resolved.url; // Use thumbnail/actual media URL for download
         }
       }
 
@@ -2175,8 +2177,10 @@ async function initSettings() {
 
   if (settingTheme) {
     settingTheme.value = settings.theme || "classic";
+    document.body.dataset.theme = settings.theme || "classic";
     settingTheme.addEventListener("change", (e) => {
       window.memedrop.updateSettings({ theme: e.target.value });
+      document.body.dataset.theme = e.target.value;
     });
   }
 
@@ -2226,6 +2230,43 @@ async function initSettings() {
       toast("📂 Dossier mis à jour, recharge...");
       setTimeout(() => window.location.reload(), 1000);
     }
+  });
+
+  // Export config
+  document.getElementById("btn-export-config")?.addEventListener("click", async () => {
+    const data = await window.memedrop.exportConfig();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `memedrop-config-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast("📤 Configuration exportée");
+  });
+
+  // Import config
+  document.getElementById("btn-import-config")?.addEventListener("click", async () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const result = await window.memedrop.importConfig(data);
+        if (result && result.ok) {
+          toast("📥 Configuration importée, recharge...");
+          setTimeout(() => window.location.reload(), 1000);
+        } else {
+          toast("Erreur d'import: " + (result?.error || "format invalide"), "error");
+        }
+      } catch (e) {
+        toast("Erreur de lecture du fichier", "error");
+      }
+    };
+    input.click();
   });
 
   if (pairingCodeDisplay) {
@@ -2413,6 +2454,27 @@ async function init() {
     console.warn('onAudioPlay not available', e);
   }
 
+  // Badge notification — compteur de drops reçus
+  let dropCount = 0;
+  const origTitle = document.title || "MemeDrop";
+  if (window.memedrop.onConnection) {
+    window.memedrop.onConnection((state) => {
+      if (state.status === "linked") document.title = origTitle;
+    });
+  }
+  // Listen for incoming drops via history update
+  if (window.memedrop.onUsersList) {
+    // The history-update is sent when a drop is received
+    try {
+      const origHandler = window.memedrop.onLibraryChanged;
+      window.memedrop.onLibraryChanged = (cb) => {
+        dropCount++;
+        document.title = `(${dropCount}) ${origTitle}`;
+        return origHandler ? origHandler(cb) : () => {};
+      };
+    } catch {}
+  }
+
   // Load cached users list (displays immediately instead of waiting for broadcast)
   if (window.memedrop.getCachedUsers) {
     const cached = await window.memedrop.getCachedUsers();
@@ -2425,7 +2487,21 @@ async function init() {
     }
   }
 
-  // Load trending GIFs if on that tab
+// Badge notification — drops reçus
+let dropCount = 0;
+const origTitle = document.title || "MemeDrop QuickLauncher";
+if (window.memedrop.onConnection) {
+  window.memedrop.onConnection((state) => {
+    if (state.status === "linked") {
+      document.title = origTitle;
+      dropCount = 0;
+    }
+  });
+}
+// Listen for history updates to count drops
+window.memedrop.onUsersList?.(); // just to have the handler registered
+
+// ── Load trending GIFs if on that tab
   const activeTab = document.querySelector(".studio-tab.active");
   if (activeTab && activeTab.dataset.tab === "giphy") {
     loadTrending();
@@ -2460,21 +2536,36 @@ document.addEventListener("paste", async (e) => {
 async function loadUsers() {
   try {
     const users = await window.memedrop.getUsers();
-    // Populate multi-target select: Discord users + custom targets
+    const recentTargets = (await window.memedrop.listTargets()) || [];
+    // Populate multi-target select: Discord users + recent targets + custom targets
     if (panelTarget) {
       panelTarget.innerHTML = "";
+      const added = new Set();
+      // Discord users first
       if (users && users.length > 0) {
         users.forEach((u) => {
+          const v = "@" + u.username;
+          added.add(v);
           const opt = document.createElement("option");
-          opt.value = "@" + u.username;
-          opt.textContent = "@" + u.username;
+          opt.value = v;
+          opt.textContent = v;
           panelTarget.appendChild(opt);
         });
       }
+      // Recent targets (not already in Discord users)
+      for (const rt of recentTargets) {
+        if (!added.has(rt)) {
+          added.add(rt);
+          const opt = document.createElement("option");
+          opt.value = rt;
+          opt.textContent = rt;
+          panelTarget.appendChild(opt);
+        }
+      }
       // Add custom targets (persisted in localStorage)
       for (const ct of customTargets) {
-        // Avoid duplicates with Discord users
-        if (!users || !users.some((u) => "@" + u.username === ct)) {
+        if (!added.has(ct)) {
+          added.add(ct);
           const opt = document.createElement("option");
           opt.value = ct;
           opt.textContent = ct;

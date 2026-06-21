@@ -96,6 +96,8 @@ contextBridge.exposeInMainWorld("memedrop", {
   downloadUrl: (url) => ipcRenderer.invoke('memes:downloadUrl', url),
   fetchAsDataUrl: (url) => ipcRenderer.invoke('fetch:asDataUrl', url),
   getCachedUsers: () => ipcRenderer.invoke('users:getCached'),
+  exportConfig: () => ipcRenderer.invoke('tools:exportConfig'),
+  importConfig: (data) => ipcRenderer.invoke('tools:importConfig', data),
 
   // Settings & Updater
   getVersion: () => ipcRenderer.invoke("app:get-version"),
