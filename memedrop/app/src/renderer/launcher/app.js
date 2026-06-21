@@ -375,6 +375,10 @@ function updateSelectionUI() {
 
 async function deleteSelected() {
   if (selectedPaths.size === 0) return;
+  // Confirmation for multi-delete
+  if (selectedPaths.size > 3) {
+    if (!confirm(`Supprimer ${selectedPaths.size} memes définitivement ?`)) return;
+  }
   const paths = Array.from(selectedPaths);
   try {
     const results = await window.memedrop.deleteMemes(paths);
@@ -532,6 +536,39 @@ async function renderGrid() {
     const name = document.createElement("div");
     name.className = "meme-card-name";
     name.textContent = meme.name;
+    // Double-click to rename
+    name.addEventListener("dblclick", async (e) => {
+      e.stopPropagation();
+      const input = document.createElement("input");
+      input.className = "input";
+      input.value = meme.name;
+      input.style.cssText = "width:100%;font-size:10px;padding:2px 4px;";
+      name.textContent = "";
+      name.appendChild(input);
+      input.focus();
+      input.select();
+      const save = async () => {
+        const newName = input.value.trim();
+        if (newName && newName !== meme.name) {
+          const result = await window.memedrop.renameMeme(meme.path, newName);
+          if (result && result.ok) {
+            meme.name = newName;
+            meme.path = result.path;
+            renderGrid();
+            toast(`✏️ Renommé en ${newName}`);
+          } else {
+            toast("Erreur de renommage", "error");
+          }
+        } else {
+          name.textContent = meme.name;
+        }
+      };
+      input.addEventListener("blur", save);
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") { ev.preventDefault(); input.blur(); }
+        if (ev.key === "Escape") { name.textContent = meme.name; }
+      });
+    });
     card.appendChild(name);
 
     // Section B: Tags display on card
@@ -954,8 +991,8 @@ function renderHistory() {
     item.className = "history-item";
     item.innerHTML = `
       <div class="history-info">
-        <div class="history-target">${entry.target}</div>
-        <div class="history-meme">${entry.name || entry.fileName || ""}</div>
+        <div class="history-target">${entry.from || entry.target || ""}</div>
+        <div class="history-meme">${entry.name || entry.fileName || entry.caption || ""}</div>
       </div>
       <span class="history-time">${entry.ts ? timeAgo(entry.ts) : ""}</span>
     `;
@@ -1571,12 +1608,21 @@ function createGiphyItem(gif) {
   })();
   img.loading = "lazy";
   img.alt = gif.title || "GIF";
-  item.appendChild(img);
+  // Progress bar for download
+  const progress = document.createElement("div");
+  progress.className = "giphy-progress";
+  progress.style.cssText = "position:absolute;bottom:32px;left:4px;right:4px;height:3px;background:rgba(255,255,255,0.2);border-radius:2px;display:none";
+  const progressFill = document.createElement("div");
+  progressFill.style.cssText = "width:0%;height:100%;background:var(--accent-a);border-radius:2px;transition:width 0.3s";
+  progress.appendChild(progressFill);
+  item.appendChild(progress);
 
   const dropBtn = document.createElement("button");
   dropBtn.className = "drop-btn";
   dropBtn.textContent = "⬇ Drop";
   const handleGiphyDownload = async () => {
+    progress.style.display = "block";
+    progressFill.style.width = "30%";
     try {
       const downloaded = await window.memedrop.downloadGiphy(
         gif.images?.original?.url || gif.images?.fixed_height?.url,

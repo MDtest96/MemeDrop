@@ -107,6 +107,18 @@ function setupMemes(store, app) {
     return { name: path.parse(newName).name, path: destPath, kind: 'image' };
   });
 
+  ipcMain.handle("memes:rename", async (_e, oldPath, newName) => {
+    try {
+      const folder = path.dirname(oldPath);
+      const ext = path.extname(oldPath);
+      const newPath = path.join(folder, newName + ext);
+      fs.renameSync(oldPath, newPath);
+      return { ok: true, path: newPath, name: newName };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
   ipcMain.handle("collage:build", async (_e, filePaths) => {
     try {
       const result = await buildCollage(filePaths);

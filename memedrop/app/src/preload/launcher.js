@@ -90,6 +90,7 @@ contextBridge.exposeInMainWorld("memedrop", {
   buildCollage: (filePaths) => ipcRenderer.invoke('collage:build', filePaths),
   resolveUrl: (url) => ipcRenderer.invoke('url:resolve', url),
   deleteMemes: (paths) => ipcRenderer.invoke('memes:delete', paths),
+  renameMeme: (oldPath, newName) => ipcRenderer.invoke('memes:rename', oldPath, newName),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
   playSound: (filePath) => ipcRenderer.invoke('audio:playSound', filePath),
   downloadUrl: (url) => ipcRenderer.invoke('memes:downloadUrl', url),

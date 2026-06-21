@@ -849,8 +849,8 @@ ipcMain.handle("drop:sendUrl", async (_e, payload) => {
       type: "drop",
       media: {
         url: resolved.url || url,
-        kind: resolvedKind || resolved.kind,
-        mime: resolved.mime || media.mime,
+        kind: resolved.kind,
+        mime: resolved.mime || "image/jpeg",
       },
       caption: caption || null,
       rain: rain || null,
