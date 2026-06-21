@@ -446,6 +446,7 @@ function connectWS() {
         setState({ status: "connecting", code: null, user: null, links: null });
         break;
       case "users:list":
+        store.set("cachedUsers", msg);
         if (launcherWin && !launcherWin.isDestroyed()) {
           launcherWin.webContents.send("users:list", msg);
         }
@@ -881,39 +882,40 @@ ipcMain.handle("drop:sendUrl", async (_e, payload) => {
 // Audio handlers are managed by audio module
 
 ipcMain.handle("streak:get", () => null);
+ipcMain.handle("users:getCached", () => store.get("cachedUsers") || null);
 ipcMain.handle("schedule:get", () => []);
 ipcMain.handle("schedule:cancel", () => {});
 ipcMain.handle("studio:templates", () => []);
 ipcMain.handle("studio:generate", () => {});
-ipcMain.handle("giphy:search", async (e, query) => {
+ipcMain.handle("giphy:search", async (e, query, offset = 0) => {
   const apiKey = store.get("giphyApiKey") || "A7Su0Alx0oH5dgrDaOicRiEBYqeZGWdX";
-  if (!apiKey) return [];
+  if (!apiKey) return { data: [], pagination: { total_count: 0 } };
   try {
     const { net } = require("electron");
     const res = await net.fetch(
-      `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=24`,
+      `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=24&offset=${offset}`,
     );
     const json = await res.json();
-    return json.data || [];
+    return { data: json.data || [], pagination: json.pagination || { total_count: 0 } };
   } catch (err) {
     console.error("Giphy Search error:", err);
-    return [];
+    return { data: [], pagination: { total_count: 0 } };
   }
 });
 
-ipcMain.handle("giphy:trending", async () => {
+ipcMain.handle("giphy:trending", async (e, offset = 0) => {
   const apiKey = store.get("giphyApiKey") || "A7Su0Alx0oH5dgrDaOicRiEBYqeZGWdX";
-  if (!apiKey) return [];
+  if (!apiKey) return { data: [], pagination: { total_count: 0 } };
   try {
     const { net } = require("electron");
     const res = await net.fetch(
-      `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=24`,
+      `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=24&offset=${offset}`,
     );
     const json = await res.json();
-    return json.data || [];
+    return { data: json.data || [], pagination: json.pagination || { total_count: 0 } };
   } catch (err) {
     console.error("Giphy Trending error:", err);
-    return [];
+    return { data: [], pagination: { total_count: 0 } };
   }
 });
 
@@ -984,7 +986,21 @@ ipcMain.handle("giphy:download", async (e, url) => {
     }
   });
 
-  // ── Dialog: select folder ────────────────────────────────────────────────
+  // ── Fetch URL as data URL (bypass CSP/CORS) ─────────────────────────────────
+    ipcMain.handle("fetch:asDataUrl", async (e, url) => {
+      try {
+        const { net } = require("electron");
+        const res = await net.fetch(url);
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const contentType = res.headers.get("content-type") || "image/gif";
+        return `data:${contentType};base64,${buffer.toString("base64")}`;
+      } catch (err) {
+        console.error("Fetch proxy error:", err);
+        return null;
+      }
+    });
+
+    // ── Dialog: select folder ────────────────────────────────────────────────
 ipcMain.handle("dialog:selectFolder", async () => {
   const { dialog } = require("electron");
   const result = await dialog.showOpenDialog({

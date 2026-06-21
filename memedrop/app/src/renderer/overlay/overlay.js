@@ -129,9 +129,20 @@ document.addEventListener('mouseup', () => {
 // ── Son d'arrivée généré via Web Audio API ────────────────────────────
 // L'ancien WAV base64 était trop court (~1 ms) et inaudible.
 // On synthétise un "pop" descendant avec un oscillateur + enveloppe gain.
+// ── Pop sound ────────────────────────────────────────────────────────────
+// Single shared AudioContext — never closed, resume on each play
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx) {
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
+  return _audioCtx;
+}
+
 function playPop(volume) {
   try {
-    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = getAudioCtx();
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -145,7 +156,6 @@ function playPop(volume) {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
     osc.start(t);
     osc.stop(t + 0.16);
-    osc.addEventListener('ended', () => ctx.close().catch(() => {}));
   } catch {}
 }
 
@@ -209,12 +219,17 @@ function notifyIfIdle() {
 // Démarre / arrête le sondage du curseur selon le nombre de drops visuels.
 function onVisualDropAdded() {
   visualActive++;
-  if (visualActive === 1) window.memedrop.watchCursor?.();
+  if (visualActive === 1) {
+    window.memedrop.watchCursor?.();
+    window.memedrop.setIgnoreMouse(false); // Capture clicks while drops are visible
+  }
 }
+
 function onVisualDropRemoved() {
   visualActive = Math.max(0, visualActive - 1);
   if (visualActive === 0) {
     window.memedrop.unwatchCursor?.();
+    window.memedrop.setIgnoreMouse(true);
     exitCapture();
   }
 }
@@ -637,6 +652,9 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
   dropMeta.rescheduleFor = rescheduleFor;
   liveDrops.add(dropMeta);
 
+  // Store on anchor so Escape key can find removeNow
+  anchor.__dropMeta = dropMeta;
+
   if (!isVideo) scheduleRemoval();
 }
 
@@ -689,3 +707,16 @@ if (window.memedrop.onSettingsUpdate) {
 window.memedrop.getSettings().then((s) => {
   if (s?.theme) document.documentElement.dataset.theme = s.theme;
 }).catch(() => {});
+
+// Escape key to close current drop (fallback si la croix est bloquée)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const activeDrop = stage.querySelector('.drop:not(.leaving):not(.closing)');
+    if (activeDrop) {
+      const anchor = activeDrop.closest('.anchor');
+      if (anchor && anchor.__dropMeta?.removeNow) {
+        anchor.__dropMeta.removeNow({ smooth: true });
+      }
+    }
+  }
+});

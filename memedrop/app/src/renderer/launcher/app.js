@@ -31,8 +31,8 @@ if (!window.memedrop) {
     generateMeme: async () => null,
     getUsers: async () => [],
     getSoundboard: async () => [],
-    searchGiphy: async () => [],
-    trendingGiphy: async () => [],
+    searchGiphy: async () => ({ data: [], pagination: {} }),
+    trendingGiphy: async () => ({ data: [], pagination: {} }),
     downloadGiphy: async () => null,
     sendDropUrl: async () => ({ ok: true }),
     sendDrop: async () => ({ ok: true }),
@@ -56,6 +56,7 @@ if (!window.memedrop) {
     installUpdate: async () => {},
     deleteMemes: async () => [],
     downloadUrl: async () => null,
+    fetchAsDataUrl: async () => null,
     selectFolder: async () => null,
     playSound: async () => {},
     toggleFavorite: async () => [],
@@ -961,7 +962,39 @@ function renderHistory() {
   }
 }
 
-// ── Drop Panel ──────────────────────────────────────────────────────────
+// ── Drag & drop files from explorer ───────────────────────────────────────
+const grid = document.getElementById("grid");
+if (grid) {
+  grid.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    grid.classList.add("drag-over");
+  });
+  grid.addEventListener("dragleave", () => {
+    grid.classList.remove("drag-over");
+  });
+  grid.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    grid.classList.remove("drag-over");
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+    let imported = 0;
+    for (const file of files) {
+      try {
+        const result = await window.memedrop.saveFromFile(file.path);
+        if (result) {
+          allMemes.unshift(result);
+          imported++;
+        }
+      } catch {}
+    }
+    if (imported > 0) {
+      renderGrid();
+      toast(`📦 ${imported} fichier(s) importé(s)`);
+    }
+  });
+}
+
+// ── Side panel toggle ─────────────────────────────────────────────────
 async function openDropPanel(meme) {
   selectedMeme = meme;
   panelName.textContent = meme.name;
@@ -1425,35 +1458,55 @@ btnStudioGenerate?.addEventListener("click", async () => {
 });
 
 // ── Section L: GIPHY ──────────────────────────────────────────────────
-btnGiphySearch?.addEventListener("click", async () => {
-  const query = giphySearch?.value.trim();
-  if (!query) return;
+let giphyOffset = 0;
+let giphyQuery = null;
+let giphyHasMore = true;
+const GIPHY_LIMIT = 24;
+
+async function loadGiphy(query, reset = true) {
+  if (isGiphyLoading) return;
+  if (reset) {
+    giphyOffset = 0;
+    giphyQuery = query;
+    giphyHasMore = true;
+    giphyGrid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Recherche…</p>';
+  }
   try {
     isGiphyLoading = true;
-    giphyGrid.innerHTML =
-      '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Recherche…</p>';
-    const results = (await window.memedrop.searchGiphy(query)) || [];
-    renderGiphyGrid(results);
+    let result;
+    if (query) {
+      result = (await window.memedrop.searchGiphy(query, giphyOffset)) || { data: [], pagination: {} };
+    } else {
+      result = (await window.memedrop.trendingGiphy(giphyOffset)) || { data: [], pagination: {} };
+    }
+    const items = result.data || [];
+    const total = result.pagination?.total_count || 0;
+    giphyHasMore = giphyOffset + GIPHY_LIMIT < total;
+
+    if (reset) {
+      renderGiphyGrid(items);
+    } else {
+      appendGiphyGrid(items);
+    }
+
+    if (reset && items.length === 0) {
+      giphyGrid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Aucun résultat</p>';
+    }
   } catch (e) {
-    giphyGrid.innerHTML =
-      '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Erreur de recherche</p>';
+    if (reset) giphyGrid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Erreur de chargement</p>';
   } finally {
     isGiphyLoading = false;
   }
+}
+
+btnGiphySearch?.addEventListener("click", () => {
+  const query = giphySearch?.value.trim();
+  if (!query) return;
+  loadGiphy(query, true);
 });
 
 async function loadTrending() {
-  if (isGiphyLoading) return;
-  try {
-    isGiphyLoading = true;
-    const results = (await window.memedrop.trendingGiphy()) || [];
-    renderGiphyGrid(results);
-  } catch (e) {
-    giphyGrid.innerHTML =
-      '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Erreur de chargement</p>';
-  } finally {
-    isGiphyLoading = false;
-  }
+  loadGiphy(null, true);
 }
 
 btnGiphyTrending?.addEventListener("click", loadTrending);
@@ -1462,56 +1515,101 @@ giphySearch?.addEventListener("keydown", (e) => {
   if (e.key === "Enter") btnGiphySearch?.click();
 });
 
-function renderGiphyGrid(results) {
+// Infinite scroll
+let giphyScrollTimer = null;
+giphyGrid?.addEventListener("scroll", () => {
+  clearTimeout(giphyScrollTimer);
+  giphyScrollTimer = setTimeout(() => {
+    if (isGiphyLoading || !giphyHasMore) return;
+    const { scrollTop, scrollHeight, clientHeight } = giphyGrid;
+    if (scrollTop + clientHeight >= scrollHeight - 200) {
+      giphyOffset += GIPHY_LIMIT;
+      loadGiphy(giphyQuery, false);
+    }
+  }, 200);
+});
+
+function appendGiphyGrid(items) {
   if (!giphyGrid) return;
-  giphyGrid.innerHTML = "";
-  if (results.length === 0) {
-    giphyGrid.innerHTML =
-      '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Aucun résultat</p>';
-    return;
+  // Remove "loading..." indicator if present
+  const loadingEl = giphyGrid.querySelector(".giphy-loading");
+  if (loadingEl) loadingEl.remove();
+
+  for (const gif of items) {
+    giphyGrid.appendChild(createGiphyItem(gif));
   }
-  for (const gif of results) {
-    const item = document.createElement("div");
-    item.className = "giphy-item";
 
-    const img = document.createElement("img");
-    img.src = gif.images?.fixed_height?.url || gif.images?.original?.url || "";
-    img.loading = "lazy";
-    img.alt = gif.title || "GIF";
-    item.appendChild(img);
+  if (!giphyHasMore) {
+    const end = document.createElement("p");
+    end.className = "giphy-loading";
+    end.style.cssText = "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:11px;padding:8px";
+    end.textContent = "— Plus de résultats —";
+    giphyGrid.appendChild(end);
+  }
+}
 
-    const dropBtn = document.createElement("button");
-    dropBtn.className = "drop-btn";
-    dropBtn.textContent = "⬇ Drop";
-    // Shared download logic
-    const handleGiphyDownload = async () => {
-      try {
-        const downloaded = await window.memedrop.downloadGiphy(
-          gif.images?.original?.url || gif.images?.fixed_height?.url,
-        );
-        if (downloaded) {
-          allMemes.unshift(downloaded);
-          renderGrid();
-          openDropPanel(downloaded);
-          toast("🌐 GIF importé !");
-        } else {
-          toast("Erreur d'import GIF", "error");
-        }
-      } catch (err) {
+function createGiphyItem(gif) {
+  const item = document.createElement("div");
+  item.className = "giphy-item";
+
+  const img = document.createElement("img");
+  const gifUrl = gif.images?.fixed_height?.url || gif.images?.original?.url || "";
+  (async () => {
+    try {
+      const dataUrl = await window.memedrop.fetchAsDataUrl(gifUrl);
+      if (dataUrl) img.src = dataUrl;
+    } catch { img.src = gifUrl; }
+  })();
+  img.loading = "lazy";
+  img.alt = gif.title || "GIF";
+  item.appendChild(img);
+
+  const dropBtn = document.createElement("button");
+  dropBtn.className = "drop-btn";
+  dropBtn.textContent = "⬇ Drop";
+  const handleGiphyDownload = async () => {
+    try {
+      const downloaded = await window.memedrop.downloadGiphy(
+        gif.images?.original?.url || gif.images?.fixed_height?.url,
+      );
+      if (downloaded) {
+        allMemes.unshift(downloaded);
+        renderGrid();
+        openDropPanel(downloaded);
+        toast("🌐 GIF importé !");
+      } else {
         toast("Erreur d'import GIF", "error");
       }
-    };
+    } catch (err) {
+      toast("Erreur d'import GIF", "error");
+    }
+  };
+  dropBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    await handleGiphyDownload();
+  });
+  item.appendChild(dropBtn);
+  item.addEventListener("click", handleGiphyDownload);
 
-    dropBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      await handleGiphyDownload();
-    });
-    item.appendChild(dropBtn);
+  return item;
+}
 
-    // Clicking anywhere on the card also triggers download
-    item.addEventListener("click", handleGiphyDownload);
-
-    giphyGrid.appendChild(item);
+function renderGiphyGrid(items) {
+  if (!giphyGrid) return;
+  giphyGrid.innerHTML = "";
+  if (items.length === 0) {
+    giphyGrid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Aucun résultat</p>';
+    return;
+  }
+  for (const gif of items) {
+    giphyGrid.appendChild(createGiphyItem(gif));
+  }
+  if (items.length >= GIPHY_LIMIT) {
+    const loader = document.createElement("p");
+    loader.className = "giphy-loading";
+    loader.style.cssText = "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:12px;padding:12px";
+    loader.textContent = "⬇ Scrollez pour plus de résultats";
+    giphyGrid.appendChild(loader);
   }
 }
 
@@ -2242,6 +2340,18 @@ async function init() {
     });
   } catch (e) {
     console.warn('onAudioPlay not available', e);
+  }
+
+  // Load cached users list (displays immediately instead of waiting for broadcast)
+  if (window.memedrop.getCachedUsers) {
+    const cached = await window.memedrop.getCachedUsers();
+    if (cached) {
+      const el = document.getElementById("users-count");
+      if (el) {
+        el.textContent = `${cached.count} connectés`;
+        el.title = cached.users.map((u) => u.username).join("\n") || "";
+      }
+    }
   }
 
   // Load trending GIFs if on that tab

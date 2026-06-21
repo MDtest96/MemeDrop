@@ -59,8 +59,8 @@ contextBridge.exposeInMainWorld("memedrop", {
   setLastDrop: (data) => ipcRenderer.invoke("history:setLast", data),
   getLastDrop: () => ipcRenderer.invoke("history:getLast"),
   copyCommand: (data) => ipcRenderer.invoke("tools:copyCommand", data),
-  searchGiphy: (query) => ipcRenderer.invoke("giphy:search", query),
-  trendingGiphy: () => ipcRenderer.invoke("giphy:trending"),
+  searchGiphy: (query, offset) => ipcRenderer.invoke("giphy:search", query, offset),
+  trendingGiphy: (offset) => ipcRenderer.invoke("giphy:trending", offset),
   downloadGiphy: (url) => ipcRenderer.invoke("giphy:download", url),
   saveGroup: (group) => ipcRenderer.invoke("groups:save", group),
   dropGroup: (groupId, target) =>
@@ -92,6 +92,8 @@ contextBridge.exposeInMainWorld("memedrop", {
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
   playSound: (filePath) => ipcRenderer.invoke('audio:playSound', filePath),
   downloadUrl: (url) => ipcRenderer.invoke('memes:downloadUrl', url),
+  fetchAsDataUrl: (url) => ipcRenderer.invoke('fetch:asDataUrl', url),
+  getCachedUsers: () => ipcRenderer.invoke('users:getCached'),
 
   // Settings & Updater
   getVersion: () => ipcRenderer.invoke("app:get-version"),
