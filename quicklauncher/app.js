@@ -5,13 +5,11 @@ if (!window.memedrop) {
   console.warn("Running outside Electron. Mocking window.memedrop");
   window.memedrop = {
     onConnection: () => () => {},
-    onUsersList: () => () => {},
     listMemes: async () => [],
     listTargets: async () => [],
     getPreview: async (path, kind) => null,
     getTags: async () => [],
     listAllTags: async () => [],
-    getAllTags: async () => ({}),
     setTags: async () => {},
     getFavorites: async () => [],
     getAudioLibrary: async () => [],
@@ -32,8 +30,8 @@ if (!window.memedrop) {
     generateMeme: async () => null,
     getUsers: async () => [],
     getSoundboard: async () => [],
-    searchGiphy: async () => ({ data: [], pagination: {} }),
-    trendingGiphy: async () => ({ data: [], pagination: {} }),
+    searchGiphy: async () => [],
+    trendingGiphy: async () => [],
     downloadGiphy: async () => null,
     sendDropUrl: async () => ({ ok: true }),
     sendDrop: async () => ({ ok: true }),
@@ -48,45 +46,15 @@ if (!window.memedrop) {
     openMemeFolder: () => {},
     onShortcut: () => () => {},
     onLibraryChanged: () => () => {},
-    onAudioPlay: () => () => {},
-    getSettings: async () => ({}),
-    updateSettings: async () => {},
-    onUpdateState: () => () => {},
-    checkForUpdates: async () => {},
-    downloadUpdate: async () => {},
-    installUpdate: async () => {},
-    deleteMemes: async () => [],
-    downloadUrl: async () => null,
-    fetchAsDataUrl: async () => null,
-    selectFolder: async () => null,
-    playSound: async () => {},
-    toggleFavorite: async () => [],
-    addSoundboard: async () => {},
-    removeSoundboard: async () => {},
   };
 }
 
-// ── Preview cache ──────────────────────────────────────────────────────────
-const previewCache = new Map();
-// Helper: cached version of getPreview (contextBridge properties are read-only,
-// so we can't override window.memedrop.getPreview directly)
-function getCachedPreview(path, kind) {
-  const key = path + "::" + (kind || "");
-  if (previewCache.has(key)) return Promise.resolve(previewCache.get(key));
-  return window.memedrop.getPreview(path, kind).then((result) => {
-    if (result) previewCache.set(key, result);
-    return result;
-  });
-}
-
 let allMemes = [];
-let selectedPaths = new Set();
 let currentFilter = "all";
 let currentQuery = "";
 let selectedMeme = null;
 let allTags = [];
 let activeTagFilter = null;
-let allTagsMap = {}; // { path: [tag1, tag2] }
 let favorites = [];
 let audioLibrary = [];
 let soundboard = [];
@@ -96,7 +64,6 @@ let streakData = null;
 let groups = [];
 let currentSort = "name";
 let currentVolume = 100;
-let currentDuration = 4;
 let lastDropData = null;
 let isGiphyLoading = false;
 let searchTimeout = null;
@@ -168,47 +135,21 @@ function timeAgo(ts) {
   return `il y a ${days}j`;
 }
 
-// ── Connection ──────────────────────────────────────────────────────────// 🔹 Connection 🔹
+// ── Connection ──────────────────────────────────────────────────────────
 const unsubConn = window.memedrop.onConnection((state) => {
   const statusMap = {
     disconnected: { cls: "conn--disconnected", label: "● Déconnecté" },
     connected: { cls: "conn--connected", label: "● Connecté" },
-    linked: { cls: "conn--linked", label: "🟢 Lié à Discord" },
-    awaiting_link: {
-      cls: "conn--pairing",
-      label: `🔵 Code: ${state.code || "En attente"}`,
-    },
+    linked: { cls: "conn--linked", label: "● Lié à Discord" },
     pairing: {
       cls: "conn--pairing",
-      label: `🔵 Code: ${state.code || "En attente"}`,
+      label: `● ${state.message || "En attente"}`,
     },
   };
   const s = statusMap[state.status] || statusMap.disconnected;
   connStatus.className = `conn-badge ${s.cls}`;
   connStatus.textContent = s.label;
-
-  const pairingDisplay = document.getElementById("pairing-code-display");
-  if (pairingDisplay) {
-    if (state.status === "awaiting_link" || state.status === "pairing") {
-      pairingDisplay.textContent = state.code || "------";
-    } else if (state.status === "linked") {
-      pairingDisplay.textContent = `Lié à ${state.user?.username || "inconnu"}`;
-    } else {
-      pairingDisplay.textContent = "------";
-    }
-  }
 });
-
-if (window.memedrop.onUsersList) {
-  window.memedrop.onUsersList((msg) => {
-    const el = document.getElementById("users-count");
-    if (el) {
-      el.textContent = `${msg.count} connectés`;
-      el.title =
-        msg.users.map((u) => u.username).join("\n") || "Aucun utilisateur";
-    }
-  });
-}
 
 // ── Section A: Tabs ────────────────────────────────────────────────────
 document.querySelectorAll(".studio-tab").forEach((tab) => {
@@ -222,10 +163,7 @@ document.querySelectorAll(".studio-tab").forEach((tab) => {
       .forEach((c) => c.classList.add("hidden"));
     const content = document.getElementById("tab-" + tab.dataset.tab);
     if (content) content.classList.remove("hidden");
-    if (tab.dataset.tab === "giphy") {
-      isGiphyLoading = false; // Reset in case of previous error
-      loadTrending();
-    }
+    if (tab.dataset.tab === "giphy") loadTrending();
     if (tab.dataset.tab === "studio") updateStudioPreview();
     if (tab.dataset.tab === "weblink") loadWeblinkTargets();
   });
@@ -260,7 +198,6 @@ document
       if (statusEl) statusEl.textContent = "🔍 Résolution du lien...";
 
       let isUnresolved = false;
-      let resolvedUrl = url;
       let resolvedKind = url.match(/\.mp4$|\.webm$/i)
         ? "video"
         : url.match(/\.gif$/i)
@@ -277,7 +214,6 @@ document
           if (statusEl)
             statusEl.textContent = `✅ ${resolved.kind.toUpperCase()} détecté`;
           resolvedKind = resolved.kind;
-          resolvedUrl = resolved.url; // Use thumbnail/actual media URL for download
         }
       }
 
@@ -289,29 +225,10 @@ document
         isWeblink: true,
       };
 
-      // Download media to memes folder
-      let downloaded = null;
-      try {
-        downloaded = await window.memedrop.downloadUrl(url);
-        if (downloaded) {
-          allMemes.unshift(downloaded);
-          renderGrid();
-          toast(`📥 ${downloaded.name} ajouté à la grille`);
-        }
-      } catch (e) {
-        console.warn("Could not download weblink media locally:", e);
-      }
-
-      if (downloaded) {
-        // Open drop panel with the DOWNLOADED file (not the URL)
-        openDropPanel(downloaded);
-      } else {
-        // Fallback: use URL as weblink
-        openDropPanel(pseudoMeme);
-      }
-
       document.getElementById("weblink-url").value = "";
       if (statusEl) statusEl.textContent = "";
+
+      openDropPanel(pseudoMeme);
 
       // We target inputs are removed from DOM so we don't clear them here
     } catch (e) {
@@ -358,74 +275,6 @@ function createSortUI() {
   sep.parentNode.insertBefore(sortWrap, sep.nextSibling);
 }
 
-// ── Selection helpers ─────────────────────────────────────────────────────
-function toggleSelection(path) {
-  if (selectedPaths.has(path)) {
-    selectedPaths.delete(path);
-  } else {
-    selectedPaths.add(path);
-  }
-  updateSelectionUI();
-}
-
-function clearSelection() {
-  selectedPaths.clear();
-  updateSelectionUI();
-}
-
-function updateSelectionUI() {
-  const bar = document.getElementById("selection-action-bar");
-  const countEl = document.getElementById("selected-count");
-  if (!bar || !countEl) return;
-  const count = selectedPaths.size;
-  if (count > 0) {
-    countEl.textContent = `${count} sélectionné${count > 1 ? "s" : ""}`;
-    bar.classList.remove("hidden");
-  } else {
-    bar.classList.add("hidden");
-  }
-  // Update visual state on cards
-  document.querySelectorAll("#grid .meme-card").forEach((card) => {
-    const path = card.dataset.path;
-    const check = card.querySelector(".meme-check");
-    if (selectedPaths.has(path)) {
-      card.classList.add("selected");
-      if (check) check.style.display = "flex";
-    } else {
-      card.classList.remove("selected");
-      if (check) check.style.display = "none";
-    }
-  });
-}
-
-async function deleteSelected() {
-  if (selectedPaths.size === 0) return;
-  // Confirmation for multi-delete
-  if (selectedPaths.size > 3) {
-    if (!confirm(`Supprimer ${selectedPaths.size} memes définitivement ?`))
-      return;
-  }
-  const paths = Array.from(selectedPaths);
-  try {
-    const results = await window.memedrop.deleteMemes(paths);
-    const allOk = results.every((r) => r.ok);
-    if (allOk) {
-      // Remove from local array
-      allMemes = allMemes.filter((m) => !selectedPaths.has(m.path));
-      clearSelection();
-      renderGrid();
-      toast(
-        `🗑 ${results.length} fichier${results.length > 1 ? "s" : ""} supprimé${results.length > 1 ? "s" : ""}`,
-      );
-    } else {
-      const errors = results.filter((r) => !r.ok).length;
-      toast(`Erreur lors de la suppression de ${errors} fichier(s)`, "error");
-    }
-  } catch (e) {
-    toast("Erreur de suppression", "error");
-  }
-}
-
 // ── Load memes ──────────────────────────────────────────────────────────
 async function loadMemes() {
   try {
@@ -436,10 +285,7 @@ async function loadMemes() {
   renderGrid();
 }
 
-let currentRenderId = 0;
 async function renderGrid() {
-  const renderId = ++currentRenderId;
-
   // Filter
   let filtered = allMemes;
   if (currentFilter !== "all") {
@@ -452,12 +298,7 @@ async function renderGrid() {
   }
   if (currentQuery) {
     const q = currentQuery.toLowerCase();
-    filtered = filtered.filter(
-      (m) =>
-        m.name.toLowerCase().includes(q) ||
-        (allTagsMap[m.path] &&
-          allTagsMap[m.path].some((t) => t.toLowerCase().includes(q))),
-    );
+    filtered = filtered.filter((m) => m.name.toLowerCase().includes(q));
   }
 
   // Clear grid
@@ -492,8 +333,6 @@ async function renderGrid() {
   // Render cards
   const fragment = document.createDocumentFragment();
   for (const meme of filtered) {
-    if (renderId !== currentRenderId) return; // Abort if a new render started
-
     const card = document.createElement("div");
     card.className = "meme-card";
     card.dataset.path = meme.path;
@@ -507,30 +346,16 @@ async function renderGrid() {
     badge.textContent = kindLabel[meme.kind] || meme.kind;
     card.appendChild(badge);
 
-    // Selection checkmark overlay
-    const check = document.createElement("div");
-    check.className = "meme-check";
-    check.textContent = "✓";
-    card.appendChild(check);
-
-    // Section C: Favorites toggle button
-    const favBtn = document.createElement("button");
-    favBtn.className = "meme-card-fav-btn";
+    // Section C: Favorites indicator
     const isFav = favorites.includes(meme.path);
-    favBtn.textContent = isFav ? "⭐" : "☆";
-    favBtn.title = isFav ? "Retirer des favoris" : "Ajouter aux favoris";
-    favBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const newFavs = await window.memedrop.toggleFavorite(meme.path, {
-        name: meme.name,
-        kind: meme.kind,
-      });
-      favorites = newFavs.map((f) => f.path);
-      renderFavorites();
-      renderGrid(); // Refresh to show updated star
-      toast(isFav ? "☆ Retiré des favoris" : "⭐ Ajouté aux favoris");
-    });
-    card.appendChild(favBtn);
+    if (isFav) {
+      const star = document.createElement("span");
+      star.className = "meme-card-fav";
+      star.textContent = "⭐";
+      star.style.cssText =
+        "position:absolute;top:6px;left:6px;font-size:14px;z-index:2;pointer-events:none;";
+      card.appendChild(star);
+    }
 
     // Preview
     if (meme.kind === "audio") {
@@ -540,8 +365,7 @@ async function renderGrid() {
       card.appendChild(icon);
     } else {
       try {
-        const preview = await getCachedPreview(meme.path, meme.kind);
-        if (renderId !== currentRenderId) return; // Check again after await
+        const preview = await window.memedrop.getPreview(meme.path, meme.kind);
         if (preview) {
           const el =
             meme.kind === "video"
@@ -564,44 +388,6 @@ async function renderGrid() {
     const name = document.createElement("div");
     name.className = "meme-card-name";
     name.textContent = meme.name;
-    // Double-click to rename
-    name.addEventListener("dblclick", async (e) => {
-      e.stopPropagation();
-      const input = document.createElement("input");
-      input.className = "input";
-      input.value = meme.name;
-      input.style.cssText = "width:100%;font-size:10px;padding:2px 4px;";
-      name.textContent = "";
-      name.appendChild(input);
-      input.focus();
-      input.select();
-      const save = async () => {
-        const newName = input.value.trim();
-        if (newName && newName !== meme.name) {
-          const result = await window.memedrop.renameMeme(meme.path, newName);
-          if (result && result.ok) {
-            meme.name = newName;
-            meme.path = result.path;
-            renderGrid();
-            toast(`✏️ Renommé en ${newName}`);
-          } else {
-            toast("Erreur de renommage", "error");
-          }
-        } else {
-          name.textContent = meme.name;
-        }
-      };
-      input.addEventListener("blur", save);
-      input.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") {
-          ev.preventDefault();
-          input.blur();
-        }
-        if (ev.key === "Escape") {
-          name.textContent = meme.name;
-        }
-      });
-    });
     card.appendChild(name);
 
     // Section B: Tags display on card
@@ -627,7 +413,7 @@ async function renderGrid() {
       card.appendChild(tagRow);
     }
 
-    card.addEventListener("click", (e) => {
+    card.addEventListener("click", () => {
       if (collageMode) {
         if (collagePaths.length < 4 && !collagePaths.includes(meme.path)) {
           collagePaths.push(meme.path);
@@ -637,12 +423,6 @@ async function renderGrid() {
           const cnt = document.getElementById("collage-count-label");
           if (cnt) cnt.textContent = `${collagePaths.length}/4 images`;
         }
-        return;
-      }
-      // Ctrl/Meta+Click toggles selection, regular click opens drop panel
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        toggleSelection(meme.path);
         return;
       }
       openDropPanel(meme);
@@ -719,10 +499,8 @@ document.getElementById("btn-side-panel")?.addEventListener("click", () => {
 async function loadTags() {
   try {
     allTags = (await window.memedrop.listAllTags()) || [];
-    allTagsMap = (await window.memedrop.getAllTags()) || {};
   } catch (e) {
     allTags = [];
-    allTagsMap = {};
   }
   renderTags();
 }
@@ -783,9 +561,7 @@ tagInput?.addEventListener("keydown", (e) => {
 // ── Section C: Favorites ───────────────────────────────────────────────
 async function loadFavorites() {
   try {
-    const raw = (await window.memedrop.getFavorites()) || [];
-    // Normalize: backend returns [{ path, name, kind, ts }], keep paths for lookup
-    favorites = raw.map((f) => f.path);
+    favorites = (await window.memedrop.getFavorites()) || [];
   } catch (e) {
     favorites = [];
   }
@@ -795,8 +571,7 @@ async function loadFavorites() {
 function renderFavorites() {
   if (!favoritesList) return;
   favoritesList.innerHTML = "";
-  const favPaths = new Set(favorites);
-  const favMemes = allMemes.filter((m) => favPaths.has(m.path));
+  const favMemes = allMemes.filter((m) => favorites.includes(m.path));
   if (favMemes.length === 0) {
     favoritesList.innerHTML =
       '<p style="font-size:11px;color:var(--text-dim);">Aucun favori</p>';
@@ -894,20 +669,6 @@ function renderSoundboard() {
     return;
   }
   for (const audio of soundboard) {
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;gap:4px;align-items:center;width:100%;";
-
-    const playBtn = document.createElement("button");
-    playBtn.className = "ghost";
-    playBtn.textContent = "▶";
-    playBtn.title = "Jouer le son";
-    playBtn.style.cssText = "padding:4px 8px;font-size:11px;flex-shrink:0;";
-    playBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      window.memedrop.playSound(audio.path);
-    });
-    row.appendChild(playBtn);
-
     const btn = document.createElement("button");
     btn.className = "ghost";
     btn.style.cssText =
@@ -930,8 +691,7 @@ function renderSoundboard() {
         toast("Erreur d'envoi", "error");
       }
     });
-    row.appendChild(btn);
-    soundboardList.appendChild(row);
+    soundboardList.appendChild(btn);
   }
 }
 
@@ -993,14 +753,6 @@ panelVolume?.addEventListener("input", () => {
   currentVolume = parseInt(panelVolume.value, 10) || 100;
 });
 
-// Duration slider
-const panelDuration = document.getElementById("panel-duration");
-const panelDurationOut = document.getElementById("panel-duration-out");
-panelDuration?.addEventListener("input", () => {
-  currentDuration = parseInt(panelDuration.value, 10) || 4;
-  if (panelDurationOut) panelDurationOut.textContent = `${currentDuration}s`;
-});
-
 // ── Section H: History ─────────────────────────────────────────────────
 async function loadHistory() {
   try {
@@ -1024,8 +776,8 @@ function renderHistory() {
     item.className = "history-item";
     item.innerHTML = `
       <div class="history-info">
-        <div class="history-target">${entry.from || entry.target || ""}</div>
-        <div class="history-meme">${entry.name || entry.fileName || entry.caption || ""}</div>
+        <div class="history-target">${entry.target}</div>
+        <div class="history-meme">${entry.name || entry.fileName || ""}</div>
       </div>
       <span class="history-time">${entry.ts ? timeAgo(entry.ts) : ""}</span>
     `;
@@ -1039,39 +791,7 @@ function renderHistory() {
   }
 }
 
-// ── Drag & drop files from explorer ───────────────────────────────────────
-// grid is already declared in DOM refs section
-if (grid) {
-  grid.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    grid.classList.add("drag-over");
-  });
-  grid.addEventListener("dragleave", () => {
-    grid.classList.remove("drag-over");
-  });
-  grid.addEventListener("drop", async (e) => {
-    e.preventDefault();
-    grid.classList.remove("drag-over");
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length === 0) return;
-    let imported = 0;
-    for (const file of files) {
-      try {
-        const result = await window.memedrop.saveFromFile(file.path);
-        if (result) {
-          allMemes.unshift(result);
-          imported++;
-        }
-      } catch {}
-    }
-    if (imported > 0) {
-      renderGrid();
-      toast(`📦 ${imported} fichier(s) importé(s)`);
-    }
-  });
-}
-
-// ── Side panel toggle ─────────────────────────────────────────────────
+// ── Drop Panel ──────────────────────────────────────────────────────────
 async function openDropPanel(meme) {
   selectedMeme = meme;
   panelName.textContent = meme.name;
@@ -1103,7 +823,7 @@ async function openDropPanel(meme) {
     panelPreview.appendChild(d);
   } else {
     try {
-      const preview = await getCachedPreview(meme.path, meme.kind);
+      const preview = await window.memedrop.getPreview(meme.path, meme.kind);
       if (preview) {
         const el =
           meme.kind === "video"
@@ -1120,14 +840,10 @@ async function openDropPanel(meme) {
 
   // Load recent targets
   const targets = await window.memedrop.listTargets();
-  if (targetSuggestions) {
-    targetSuggestions.innerHTML = targets
-      .map((t) => `<option value="${t}">`)
-      .join("");
-  }
-  panelTarget.selectedIndex = -1; // Deselect all in multi-select
-  const panelTargetAdd = document.getElementById("panel-target-add");
-  if (panelTargetAdd) panelTargetAdd.value = "";
+  targetSuggestions.innerHTML = targets
+    .map((t) => `<option value="${t}">`)
+    .join("");
+  panelTarget.value = "";
   panelCaption.value = "";
   panelRain.value = "";
   panelStatus.textContent = "";
@@ -1178,8 +894,6 @@ async function openDropPanel(meme) {
 
   // Section G: Reset volume slider
   if (panelVolume) panelVolume.value = currentVolume;
-  if (panelDuration) panelDuration.value = currentDuration;
-  if (panelDurationOut) panelDurationOut.textContent = `${currentDuration}s`;
 
   dropPanel.classList.remove("hidden");
 }
@@ -1227,12 +941,9 @@ document.getElementById("btn-preview")?.addEventListener("click", async () => {
 // Send
 document.getElementById("btn-send")?.addEventListener("click", async () => {
   if (!selectedMeme) return;
-  // Get selected targets from multi-select
-  const targets = Array.from(panelTarget?.selectedOptions || [])
-    .map((o) => o.value.trim())
-    .filter(Boolean);
-  if (targets.length === 0) {
-    panelStatus.textContent = "❌ Sélectionne au moins une cible";
+  const target = panelTarget.value.trim();
+  if (!target) {
+    panelStatus.textContent = "❌ Mets une cible (@utilisateur)";
     panelStatus.className = "panel-status error";
     return;
   }
@@ -1250,69 +961,47 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
   // Section G: Get volume
   const volume = currentVolume;
 
-  // Send to all selected targets
-  let successCount = 0;
-  let lastTarget = "";
-  const localPreview =
-    document.getElementById("panel-local-preview")?.checked ?? true;
-  for (const [idx, target] of targets.entries()) {
-    lastTarget = target;
-    let result;
-    if (selectedMeme.isWeblink) {
-      result = await window.memedrop.sendDropUrl({
-        target,
-        url: selectedMeme.url,
-        caption,
-        rain,
-        kind: selectedMeme.kind,
-      });
-    } else if (selectedMeme.isCollage) {
-      // Send each file individually to preserve GIF animation / video
-      let sentCount = 0;
-      for (const fp of selectedMeme.collagePaths) {
-        const r = await window.memedrop.sendDrop({
-          target,
-          filePath: fp,
-          caption: null,
-          rain: null,
-          kind: "image",
-          volume,
-          showLocalPreview: false,
-        });
-        if (r && r.ok) sentCount++;
-      }
-      result = { ok: sentCount > 0, count: sentCount };
-    } else {
-      result = await window.memedrop.sendDrop({
-        target,
-        filePath: selectedMeme.path,
-        audioPath,
-        caption,
-        rain,
-        kind: selectedMeme.kind,
-        volume,
-        duration: currentDuration,
-        showLocalPreview: idx === 0 ? localPreview : false,
-      });
-    }
-
-    if (result && result.ok) {
-      successCount++;
-      await window.memedrop.addTarget(target);
-      await window.memedrop.addHistory({
-        target,
-        name: selectedMeme.name,
-        ts: Date.now(),
-      });
-    }
+  let result;
+  if (selectedMeme.isWeblink) {
+    result = await window.memedrop.sendDropUrl({
+      target,
+      url: selectedMeme.url,
+      caption,
+      rain,
+      kind: selectedMeme.kind,
+    });
+  } else if (selectedMeme.isCollage) {
+    result = await window.memedrop.sendDrop({
+      target,
+      filePaths: selectedMeme.collagePaths,
+      caption,
+      rain,
+      kind: "image",
+    });
+  } else {
+    result = await window.memedrop.sendDrop({
+      target,
+      filePath: selectedMeme.path,
+      audioPath,
+      caption,
+      rain,
+      kind: selectedMeme.kind,
+      volume,
+    });
   }
 
   sendBtn.disabled = false;
   sendBtn.textContent = "🚀 Envoyer";
 
-  if (successCount > 0) {
-    panelStatus.textContent = `✅ Drop envoyé à ${successCount}/${targets.length} cible(s)`;
+  if (result.ok) {
+    panelStatus.textContent = `✅ Drop envoyé à ${target}`;
     panelStatus.className = "panel-status success";
+    await window.memedrop.addTarget(target);
+    await window.memedrop.addHistory({
+      target,
+      name: selectedMeme.name,
+      ts: Date.now(),
+    });
 
     // Section F: Persist audio pairing if selected
     if (audioPath) {
@@ -1325,7 +1014,7 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
 
     // Section I: Set last drop
     lastDropData = {
-      target: targets[0],
+      target,
       filePath: selectedMeme.path,
       caption,
       rain,
@@ -1349,12 +1038,10 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
     // Section H: Refresh history
     await loadHistory();
 
-    toast(
-      `✅ Drop envoyé à ${targets.length} cible${targets.length > 1 ? "s" : ""}`,
-    );
+    toast(`✅ Drop envoyé à ${target}`);
     closeDropPanel();
   } else {
-    panelStatus.textContent = `❌ Échec de l'envoi`;
+    panelStatus.textContent = `❌ ${result.error || "Échec de l'envoi"}`;
     panelStatus.className = "panel-status error";
   }
 });
@@ -1362,10 +1049,7 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
 // Copy command
 document.getElementById("btn-copy-cmd")?.addEventListener("click", () => {
   if (!selectedMeme) return;
-  const targets = Array.from(panelTarget?.selectedOptions || [])
-    .map((o) => o.value.trim())
-    .filter(Boolean);
-  const target = targets[0] || "@pote";
+  const target = panelTarget.value.trim() || "@pote";
   const caption = panelCaption.value.trim() || null;
   const rain = panelRain.value.trim() || null;
   window.memedrop.copyCommand({
@@ -1552,66 +1236,35 @@ btnStudioGenerate?.addEventListener("click", async () => {
 });
 
 // ── Section L: GIPHY ──────────────────────────────────────────────────
-let giphyOffset = 0;
-let giphyQuery = null;
-let giphyHasMore = true;
-const GIPHY_LIMIT = 24;
-
-async function loadGiphy(query, reset = true) {
-  if (isGiphyLoading) return;
-  if (reset) {
-    giphyOffset = 0;
-    giphyQuery = query;
-    giphyHasMore = true;
-    giphyGrid.innerHTML =
-      '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Recherche…</p>';
-  }
+btnGiphySearch?.addEventListener("click", async () => {
+  const query = giphySearch?.value.trim();
+  if (!query) return;
   try {
     isGiphyLoading = true;
-    let result;
-    if (query) {
-      result = (await window.memedrop.searchGiphy(query, giphyOffset)) || {
-        data: [],
-        pagination: {},
-      };
-    } else {
-      result = (await window.memedrop.trendingGiphy(giphyOffset)) || {
-        data: [],
-        pagination: {},
-      };
-    }
-    const items = result.data || [];
-    const total = result.pagination?.total_count || 0;
-    // Giphy trending API returns total_count=0, assume there's always more
-    giphyHasMore = total === 0 || giphyOffset + GIPHY_LIMIT < total;
-
-    if (reset) {
-      renderGiphyGrid(items);
-    } else {
-      appendGiphyGrid(items);
-    }
-
-    if (reset && items.length === 0) {
-      giphyGrid.innerHTML =
-        '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Aucun résultat</p>';
-    }
+    giphyGrid.innerHTML =
+      '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Recherche…</p>';
+    const results = (await window.memedrop.searchGiphy(query)) || [];
+    renderGiphyGrid(results);
   } catch (e) {
-    if (reset)
-      giphyGrid.innerHTML =
-        '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Erreur de chargement</p>';
+    giphyGrid.innerHTML =
+      '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Erreur de recherche</p>';
   } finally {
     isGiphyLoading = false;
   }
-}
-
-btnGiphySearch?.addEventListener("click", () => {
-  const query = giphySearch?.value.trim();
-  if (!query) return;
-  loadGiphy(query, true);
 });
 
 async function loadTrending() {
-  loadGiphy(null, true);
+  if (isGiphyLoading) return;
+  try {
+    isGiphyLoading = true;
+    const results = (await window.memedrop.trendingGiphy()) || [];
+    renderGiphyGrid(results);
+  } catch (e) {
+    giphyGrid.innerHTML =
+      '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Erreur de chargement</p>';
+  } finally {
+    isGiphyLoading = false;
+  }
 }
 
 btnGiphyTrending?.addEventListener("click", loadTrending);
@@ -1620,141 +1273,49 @@ giphySearch?.addEventListener("keydown", (e) => {
   if (e.key === "Enter") btnGiphySearch?.click();
 });
 
-// Infinite scroll
-let giphyScrollTimer = null;
-giphyGrid?.addEventListener("scroll", () => {
-  clearTimeout(giphyScrollTimer);
-  giphyScrollTimer = setTimeout(() => {
-    if (isGiphyLoading || !giphyHasMore) return;
-    const { scrollTop, scrollHeight, clientHeight } = giphyGrid;
-    if (scrollTop + clientHeight >= scrollHeight - 200) {
-      giphyOffset += GIPHY_LIMIT;
-      loadGiphy(giphyQuery, false);
-    }
-  }, 200);
-});
-
-function appendGiphyGrid(items) {
-  if (!giphyGrid) return;
-  // Remove "loading..." indicator if present
-  const loadingEl = giphyGrid.querySelector(".giphy-loading");
-  if (loadingEl) loadingEl.remove();
-
-  for (const gif of items) {
-    const item = createGiphyItem(gif);
-    if (item) giphyGrid.appendChild(item);
-  }
-
-  if (!giphyHasMore) {
-    const end = document.createElement("p");
-    end.className = "giphy-loading";
-    end.style.cssText = "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:11px;padding:8px";
-    end.textContent = "— Plus de résultats —";
-    giphyGrid.appendChild(end);
-  }
-  autoLoadMoreGiphy();
-}
-
-function createGiphyItem(gif) {
-  const item = document.createElement("div");
-  item.className = "giphy-item";
-
-  const img = document.createElement("img");
-  const gifUrl =
-    gif?.images?.fixed_height?.url || gif?.images?.original?.url || "";
-  if (!gifUrl) return null; // Skip invalid GIFs
-  img.src = gifUrl; // Load directly (CSP doesn't block img.src in Electron)
-  // Also try fetchAsDataUrl for better reliability (runs async, won't override if already set)
-  window.memedrop.fetchAsDataUrl(gifUrl).then(dataUrl => {
-    if (dataUrl) img.src = dataUrl;
-  }).catch(() => {});
-  img.loading = "lazy";
-  img.alt = gif.title || "GIF";
-  item.appendChild(img);
-  // Progress bar for download
-  const progress = document.createElement("div");
-  progress.className = "giphy-progress";
-  progress.style.cssText =
-    "position:absolute;bottom:32px;left:4px;right:4px;height:3px;background:rgba(255,255,255,0.2);border-radius:2px;display:none";
-  const progressFill = document.createElement("div");
-  progressFill.style.cssText =
-    "width:0%;height:100%;background:var(--accent-a);border-radius:2px;transition:width 0.3s";
-  progress.appendChild(progressFill);
-  item.appendChild(progress);
-
-  const dropBtn = document.createElement("button");
-  dropBtn.className = "drop-btn";
-  dropBtn.textContent = "⬇ Drop";
-  const handleGiphyDownload = async () => {
-    progress.style.display = "block";
-    progressFill.style.width = "30%";
-    try {
-      const downloaded = await window.memedrop.downloadGiphy(
-        gif.images?.original?.url || gif.images?.fixed_height?.url,
-      );
-      progressFill.style.width = "100%";
-      setTimeout(() => {
-        progress.style.display = "none";
-        progressFill.style.width = "0%";
-      }, 500);
-      if (downloaded) {
-        allMemes.unshift(downloaded);
-        renderGrid();
-        openDropPanel(downloaded);
-        toast("🌐 GIF importé !");
-      } else {
-        toast("Erreur d'import GIF", "error");
-      }
-    } catch (err) {
-      toast("Erreur d'import GIF", "error");
-    }
-  };
-  dropBtn.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    await handleGiphyDownload();
-  });
-  item.appendChild(dropBtn);
-  item.addEventListener("click", handleGiphyDownload);
-
-  return item;
-}
-
-function renderGiphyGrid(items) {
+function renderGiphyGrid(results) {
   if (!giphyGrid) return;
   giphyGrid.innerHTML = "";
-  if (items.length === 0) {
+  if (results.length === 0) {
     giphyGrid.innerHTML =
       '<p style="grid-column:1/-1;text-align:center;color:var(--text-dim);">Aucun résultat</p>';
     return;
   }
-  for (const gif of items) {
-    const item = createGiphyItem(gif);
-    if (item) giphyGrid.appendChild(item);
-  }
-  if (items.length >= GIPHY_LIMIT) {
-    const loader = document.createElement("p");
-    loader.className = "giphy-loading";
-    loader.style.cssText =
-      "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:12px;padding:12px";
-    loader.textContent = "⬇ Scrollez pour plus de résultats";
-    giphyGrid.appendChild(loader);
-  }
-  // Auto-load more if content doesn't fill the container
-  autoLoadMoreGiphy();
-}
+  for (const gif of results) {
+    const item = document.createElement("div");
+    item.className = "giphy-item";
 
-function autoLoadMoreGiphy() {
-  if (!giphyGrid || isGiphyLoading || !giphyHasMore) return;
-  // Small delay to let DOM settle
-  setTimeout(() => {
-    const scrollH = giphyGrid.scrollHeight;
-    const clientH = giphyGrid.clientHeight;
-    // If content is smaller than container or within 50px of filling, load more
-    if (scrollH <= clientH + 50 && giphyHasMore) {
-      giphyOffset += GIPHY_LIMIT;
-      loadGiphy(giphyQuery, false);
-    }
-  }, 100);
+    const img = document.createElement("img");
+    img.src = gif.url || gif.images?.fixed_height?.url || "";
+    img.loading = "lazy";
+    img.alt = gif.title || "GIF";
+    item.appendChild(img);
+
+    const dropBtn = document.createElement("button");
+    dropBtn.className = "drop-btn";
+    dropBtn.textContent = "⬇ Drop";
+    dropBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try {
+        const downloaded = await window.memedrop.downloadGiphy(
+          gif.url || gif.images?.original?.url,
+        );
+        if (downloaded) {
+          allMemes.unshift(downloaded);
+          renderGrid();
+          openDropPanel(downloaded);
+          toast("🌐 GIF importé !");
+        } else {
+          toast("Erreur d'import GIF", "error");
+        }
+      } catch (err) {
+        toast("Erreur d'import GIF", "error");
+      }
+    });
+    item.appendChild(dropBtn);
+
+    giphyGrid.appendChild(item);
+  }
 }
 
 // ── Section M: Groups ─────────────────────────────────────────────────
@@ -1773,62 +1334,6 @@ async function loadGroups() {
     groupSelect.innerHTML = '<option value="">Groupes…</option>';
   }
 }
-
-document
-  .getElementById("btn-select-all-targets")
-  ?.addEventListener("click", () => {
-    const sel = panelTarget;
-    if (sel) Array.from(sel.options).forEach((o) => (o.selected = true));
-  });
-document.getElementById("btn-clear-targets")?.addEventListener("click", () => {
-  const sel = panelTarget;
-  if (sel) sel.selectedIndex = -1;
-});
-
-// ── Custom targets ────────────────────────────────────────────────────────
-let customTargets = new Set();
-try {
-  const saved = JSON.parse(
-    localStorage.getItem("memedrop_custom_targets") || "[]",
-  );
-  customTargets = new Set(saved);
-} catch {}
-
-function saveCustomTargets() {
-  localStorage.setItem(
-    "memedrop_custom_targets",
-    JSON.stringify([...customTargets]),
-  );
-}
-
-// Add custom target
-const panelTargetAdd = document.getElementById("panel-target-add");
-const addTargetBtn = document.getElementById("btn-add-target");
-function addCustomTarget() {
-  if (!panelTargetAdd || !panelTarget) return;
-  const val = panelTargetAdd.value.trim();
-  if (!val) return;
-  customTargets.add(val);
-  saveCustomTargets();
-  // Check if already exists in select
-  const exists = Array.from(panelTarget.options).some((o) => o.value === val);
-  if (exists) {
-    const opt = Array.from(panelTarget.options).find((o) => o.value === val);
-    if (opt) opt.selected = true;
-    panelTargetAdd.value = "";
-    return;
-  }
-  const opt = document.createElement("option");
-  opt.value = val;
-  opt.textContent = val;
-  opt.selected = true;
-  panelTarget.appendChild(opt);
-  panelTargetAdd.value = "";
-}
-addTargetBtn?.addEventListener("click", addCustomTarget);
-panelTargetAdd?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") addCustomTarget();
-});
 
 btnSaveGroup?.addEventListener("click", async () => {
   const name = prompt("Nom du groupe :");
@@ -1883,28 +1388,6 @@ btnDropGroup?.addEventListener("click", async () => {
     }
   } catch (e) {
     toast("Erreur d'envoi au groupe", "error");
-  }
-});
-
-// Drop à tous les connectés
-document.getElementById("btn-drop-all")?.addEventListener("click", async () => {
-  if (!selectedMeme) return toast("Sélectionne d'abord un meme", "error");
-  if (!confirm(`Envoyer "${selectedMeme.name}" à TOUS les connectés ?`)) return;
-  try {
-    const result = await window.memedrop.sendDrop({
-      target: "@everyone",
-      filePath: selectedMeme.path,
-      kind: selectedMeme.kind,
-      caption: null,
-      rain: null,
-    });
-    if (result && result.ok) {
-      toast(`📤 Envoyé à tous !`);
-    } else {
-      toast("Erreur d'envoi", "error");
-    }
-  } catch (e) {
-    toast("Erreur d'envoi", "error");
   }
 });
 
@@ -2093,11 +1576,6 @@ document.addEventListener("drop", async (e) => {
     }
     if (result) {
       allMemes.unshift(result);
-      if (result.kind === "audio") {
-        audioLibrary.unshift(result);
-        renderAudioLibrary();
-        renderAudioSelect();
-      }
     }
   }
   renderGrid();
@@ -2108,403 +1586,6 @@ document.addEventListener("drop", async (e) => {
 
 // ── Toast ───────────────────────────────────────────────────────────────
 // (declared at top)
-
-// ── Settings & Auto-Update ──────────────────────────────────────────────
-async function initSettings() {
-  const settingVolume = document.getElementById("setting-volume");
-  const volumeOut = document.getElementById("volume-out");
-  const settingMusicVolume = document.getElementById("setting-music-volume");
-  const musicVolumeOut = document.getElementById("music-volume-out");
-  const settingServer = document.getElementById("setting-server");
-  const settingAutostart = document.getElementById("setting-autostart");
-  const settingMuteMode = document.getElementById("setting-mute-mode");
-  const settingGiphy = document.getElementById("setting-giphy");
-
-  const settingOpacity = document.getElementById("setting-opacity");
-  const opacityOut = document.getElementById("opacity-out");
-  const settingDuration = document.getElementById("setting-duration");
-  const durationOut = document.getElementById("duration-out");
-  const settingVideoDuration = document.getElementById(
-    "setting-video-duration",
-  );
-  const videoDurationOut = document.getElementById("video-duration-out");
-  const settingSoundOnArrival = document.getElementById(
-    "setting-soundOnArrival",
-  );
-  const settingSpotlightOnDrop = document.getElementById(
-    "setting-spotlightOnDrop",
-  );
-  const settingTheme = document.getElementById("setting-theme");
-  const settingOverlayDisplayId = document.getElementById(
-    "setting-overlayDisplayId",
-  );
-
-  const updateTitle = document.getElementById("update-title");
-  const updateMsg = document.getElementById("update-msg");
-  const updateProgress = document.getElementById("update-progress");
-  const updateProgressFill = document.getElementById("update-progress-fill");
-  const updateCheckBtn = document.getElementById("update-check-btn");
-  const updateDownloadBtn = document.getElementById("update-download-btn");
-  const updateInstallBtn = document.getElementById("update-install-btn");
-
-  const pairingCodeDisplay = document.getElementById("pairing-code-display");
-  const copyCodeBtn = document.getElementById("copy-code-btn");
-  const serversListDisplay = document.getElementById("servers-list-display");
-
-  const settings = await window.memedrop.getSettings();
-
-  if (settingVolume) {
-    settingVolume.value = settings.volume ?? 75;
-    volumeOut.textContent = `${settingVolume.value}%`;
-    settingVolume.addEventListener("input", (e) => {
-      volumeOut.textContent = `${e.target.value}%`;
-    });
-    settingVolume.addEventListener("change", (e) => {
-      window.memedrop.updateSettings({ volume: parseInt(e.target.value, 10) });
-    });
-  }
-
-  if (settingMusicVolume) {
-    settingMusicVolume.value = settings.musicVolume ?? 75;
-    musicVolumeOut.textContent = `${settingMusicVolume.value}%`;
-    settingMusicVolume.addEventListener("input", (e) => {
-      musicVolumeOut.textContent = `${e.target.value}%`;
-    });
-    settingMusicVolume.addEventListener("change", (e) => {
-      window.memedrop.updateSettings({
-        musicVolume: parseInt(e.target.value, 10),
-      });
-    });
-  }
-
-  if (settingServer) {
-    settingServer.value = settings.serverUrl || "";
-    settingServer.addEventListener("change", (e) => {
-      window.memedrop.updateSettings({ serverUrl: e.target.value.trim() });
-    });
-  }
-
-  if (settingAutostart) {
-    settingAutostart.checked = !!settings.autostart;
-    settingAutostart.addEventListener("change", (e) => {
-      window.memedrop.updateSettings({ autostart: e.target.checked });
-    });
-  }
-
-  if (settingMuteMode) {
-    if (settings.paused) {
-      settingMuteMode.value = "pause";
-    } else if (settings.muteUntil === -1) {
-      settingMuteMode.value = "mute-inf";
-    } else if (settings.muteUntil && settings.muteUntil > Date.now()) {
-      settingMuteMode.value = "mute-30"; // Approximatif
-    } else {
-      settingMuteMode.value = "active";
-    }
-
-    settingMuteMode.addEventListener("change", (e) => {
-      const val = e.target.value;
-      if (val === "active") {
-        window.memedrop.updateSettings({ paused: false, muteUntil: null });
-      } else if (val === "pause") {
-        window.memedrop.updateSettings({ paused: true, muteUntil: null });
-      } else if (val === "mute-30") {
-        window.memedrop.updateSettings({
-          paused: false,
-          muteUntil: Date.now() + 30 * 60_000,
-        });
-      } else if (val === "mute-120") {
-        window.memedrop.updateSettings({
-          paused: false,
-          muteUntil: Date.now() + 120 * 60_000,
-        });
-      } else if (val === "mute-inf") {
-        window.memedrop.updateSettings({ paused: false, muteUntil: -1 });
-      }
-    });
-  }
-
-  if (settingOpacity) {
-    settingOpacity.value = settings.opacity ?? 1.0;
-    opacityOut.textContent = `${Math.round(settingOpacity.value * 100)}%`;
-    settingOpacity.addEventListener("input", (e) => {
-      opacityOut.textContent = `${Math.round(e.target.value * 100)}%`;
-    });
-    settingOpacity.addEventListener("change", (e) => {
-      window.memedrop.updateSettings({ opacity: parseFloat(e.target.value) });
-    });
-  }
-
-  if (settingDuration) {
-    settingDuration.value = settings.duration ?? 4;
-    durationOut.textContent = `${settingDuration.value}s`;
-    settingDuration.addEventListener("input", (e) => {
-      durationOut.textContent = `${e.target.value}s`;
-    });
-    settingDuration.addEventListener("change", (e) => {
-      window.memedrop.updateSettings({
-        duration: parseInt(e.target.value, 10),
-      });
-    });
-  }
-
-  if (settingVideoDuration) {
-    settingVideoDuration.value = settings.videoDuration ?? 30;
-    videoDurationOut.textContent = `${settingVideoDuration.value}s`;
-    settingVideoDuration.addEventListener("input", (e) => {
-      videoDurationOut.textContent = `${e.target.value}s`;
-    });
-    settingVideoDuration.addEventListener("change", (e) => {
-      window.memedrop.updateSettings({
-        videoDuration: parseInt(e.target.value, 10),
-      });
-    });
-  }
-
-  if (settingSoundOnArrival) {
-    settingSoundOnArrival.checked = !!settings.soundOnArrival;
-    settingSoundOnArrival.addEventListener("change", (e) => {
-      window.memedrop.updateSettings({ soundOnArrival: e.target.checked });
-    });
-  }
-
-  if (settingSpotlightOnDrop) {
-    settingSpotlightOnDrop.checked = !!settings.spotlightOnDrop;
-    settingSpotlightOnDrop.addEventListener("change", (e) => {
-      window.memedrop.updateSettings({ spotlightOnDrop: e.target.checked });
-    });
-  }
-
-  if (settingTheme) {
-    settingTheme.value = settings.theme || "classic";
-    document.body.dataset.theme = settings.theme || "classic";
-    settingTheme.addEventListener("change", (e) => {
-      window.memedrop.updateSettings({ theme: e.target.value });
-      document.body.dataset.theme = e.target.value;
-    });
-  }
-
-  if (settingOverlayDisplayId && window.memedrop.listDisplays) {
-    try {
-      const displays = await window.memedrop.listDisplays();
-      settingOverlayDisplayId.innerHTML =
-        '<option value="">Automatique (Écran principal)</option>';
-      displays.forEach((d) => {
-        const opt = document.createElement("option");
-        opt.value = d.id;
-        opt.textContent = d.label + (d.primary ? " (Principal)" : "");
-        settingOverlayDisplayId.appendChild(opt);
-      });
-      settingOverlayDisplayId.value = settings.overlayDisplayId || "";
-
-      settingOverlayDisplayId.addEventListener("change", (e) => {
-        window.memedrop.updateSettings({
-          overlayDisplayId: e.target.value
-            ? parseInt(e.target.value, 10)
-            : null,
-        });
-      });
-    } catch (err) {
-      console.error("Failed to load displays", err);
-    }
-  }
-
-  if (settingGiphy) {
-    settingGiphy.value = settings.giphyApiKey || "A7Su0Alx0oH5dgrDaOicRiEBYqeZGWdX";
-    settingGiphy.addEventListener("change", (e) => {
-      window.memedrop.updateSettings({ giphyApiKey: e.target.value.trim() });
-    });
-  }
-
-  // Meme folder chooser
-  const settingMemeFolder = document.getElementById("setting-meme-folder");
-  const btnChooseFolder = document.getElementById("btn-choose-meme-folder");
-  if (settingMemeFolder) {
-    settingMemeFolder.value = settings.memeFolderPath || "";
-  }
-  btnChooseFolder?.addEventListener("click", async () => {
-    const result = await window.memedrop.selectFolder();
-    if (result) {
-      window.memedrop.updateSettings({ memeFolderPath: result });
-      settingMemeFolder.value = result;
-      toast("📂 Dossier mis à jour, recharge...");
-      setTimeout(() => window.location.reload(), 1000);
-    }
-  });
-
-  // Export config
-  document
-    .getElementById("btn-export-config")
-    ?.addEventListener("click", async () => {
-      const data = await window.memedrop.exportConfig();
-      const blob = new Blob([JSON.stringify(data, null, 2)], {
-        type: "application/json",
-      });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `memedrop-config-${Date.now()}.json`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      toast("📤 Configuration exportée");
-    });
-
-  // Import config
-  document
-    .getElementById("btn-import-config")
-    ?.addEventListener("click", async () => {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = ".json";
-      input.onchange = async () => {
-        const file = input.files?.[0];
-        if (!file) return;
-        try {
-          const text = await file.text();
-          const data = JSON.parse(text);
-          const result = await window.memedrop.importConfig(data);
-          if (result && result.ok) {
-            toast("📥 Configuration importée, recharge...");
-            setTimeout(() => window.location.reload(), 1000);
-          } else {
-            toast(
-              "Erreur d'import: " + (result?.error || "format invalide"),
-              "error",
-            );
-          }
-        } catch (e) {
-          toast("Erreur de lecture du fichier", "error");
-        }
-      };
-      input.click();
-    });
-
-  if (pairingCodeDisplay) {
-    pairingCodeDisplay.textContent = settings.linkIdentity || "------";
-  }
-
-  if (copyCodeBtn) {
-    copyCodeBtn.addEventListener("click", () => {
-      let codeToCopy = pairingCodeDisplay.textContent || "";
-      if (codeToCopy === "------" || codeToCopy.startsWith("Lié")) {
-        codeToCopy = ""; // Ne rien copier si c'est vide ou déjà lié
-      }
-      navigator.clipboard.writeText(codeToCopy);
-      toast("Code copié !");
-    });
-  }
-
-  if (serversListDisplay) {
-    const guilds = settings.guilds || {};
-    serversListDisplay.innerHTML = "";
-    Object.entries(guilds).forEach(([id, g]) => {
-      const div = document.createElement("div");
-      div.style.display = "flex";
-      div.style.justifyContent = "space-between";
-      div.style.padding = "4px 8px";
-      div.style.background = "#2a2240";
-      div.style.borderRadius = "4px";
-
-      const name = document.createElement("span");
-      name.textContent = g.name;
-
-      const toggle = document.createElement("input");
-      toggle.type = "checkbox";
-      toggle.checked = !g.disabled;
-      toggle.addEventListener("change", (e) => {
-        const newGuilds = { ...guilds };
-        newGuilds[id].disabled = !e.target.checked;
-        window.memedrop.updateSettings({ guilds: newGuilds });
-      });
-
-      div.appendChild(name);
-      div.appendChild(toggle);
-      serversListDisplay.appendChild(div);
-    });
-  }
-
-  // Update logic
-  window.memedrop.onUpdateState((state) => {
-    const globalBanner = document.getElementById("global-update-banner");
-    const globalText = document.getElementById("global-update-text");
-    const globalBtn = document.getElementById("global-update-btn");
-
-    if (globalBtn && !globalBtn.hasListener) {
-      globalBtn.addEventListener("click", () =>
-        window.memedrop.installUpdate(),
-      );
-      globalBtn.hasListener = true;
-    }
-
-    if (updateTitle) {
-      updateProgress.classList.add("hidden");
-      updateCheckBtn.classList.add("hidden");
-      updateDownloadBtn.classList.add("hidden");
-      updateInstallBtn.classList.add("hidden");
-    }
-
-    if (state.status === "checking") {
-      if (updateMsg) updateMsg.textContent = "Recherche de mise à jour...";
-    } else if (state.status === "available") {
-      if (updateTitle)
-        updateTitle.textContent = `Mise à jour ${state.version} dispo !`;
-      if (updateMsg)
-        updateMsg.textContent =
-          "Une nouvelle version est disponible. Téléchargement auto...";
-      if (globalBanner) {
-        globalBanner.classList.remove("hidden");
-        globalText.textContent = `Téléchargement de la mise à jour ${state.version}...`;
-        globalBtn.classList.add("hidden");
-      }
-    } else if (state.status === "up-to-date") {
-      if (updateMsg) updateMsg.textContent = "L'application est à jour.";
-      if (updateCheckBtn) updateCheckBtn.classList.remove("hidden");
-      if (globalBanner) globalBanner.classList.add("hidden");
-    } else if (state.status === "downloading") {
-      if (updateMsg)
-        updateMsg.textContent = `Téléchargement... ${state.progress}%`;
-      if (updateProgress) {
-        updateProgress.classList.remove("hidden");
-        updateProgressFill.style.width = `${state.progress}%`;
-      }
-      if (globalBanner) {
-        globalBanner.classList.remove("hidden");
-        globalText.textContent = `Téléchargement de la mise à jour... ${state.progress}%`;
-      }
-    } else if (state.status === "downloaded") {
-      if (updateTitle) updateTitle.textContent = "Prêt à installer";
-      if (updateMsg) updateMsg.textContent = "Le téléchargement est terminé.";
-      if (updateInstallBtn) updateInstallBtn.classList.remove("hidden");
-      if (globalBanner) {
-        globalBanner.classList.remove("hidden");
-        globalText.textContent = `Mise à jour ${state.version} prête !`;
-        globalBtn.classList.remove("hidden");
-      }
-    } else if (state.status === "error") {
-      if (updateTitle) updateTitle.textContent = "Erreur";
-      if (updateMsg)
-        updateMsg.textContent =
-          state.error || "Impossible de vérifier les mises à jour.";
-      if (updateCheckBtn) updateCheckBtn.classList.remove("hidden");
-      if (globalBanner) globalBanner.classList.add("hidden");
-    }
-  });
-
-  if (updateCheckBtn) {
-    updateCheckBtn.addEventListener("click", () =>
-      window.memedrop.checkForUpdates(),
-    );
-  }
-  if (updateDownloadBtn) {
-    updateDownloadBtn.addEventListener("click", () =>
-      window.memedrop.downloadUpdate(),
-    );
-  }
-  if (updateInstallBtn) {
-    updateInstallBtn.addEventListener("click", () =>
-      window.memedrop.installUpdate(),
-    );
-  }
-}
 
 // ── Init ────────────────────────────────────────────────────────────────
 async function init() {
@@ -2524,59 +1605,11 @@ async function init() {
     loadTemplates(),
     loadUsers(),
     loadSoundboard(),
-    initSettings(),
   ]);
-
-  // Set App Version
-  try {
-    const version = await window.memedrop.getVersion();
-    const versionEl = document.getElementById("app-version-display");
-    if (versionEl) versionEl.textContent = "v" + version;
-  } catch (e) {
-    console.warn("Failed to get app version", e);
-  }
 
   // Setup listeners
   setupShortcutListener();
   setupFileWatcher();
-
-  // Selection action bar
-  document
-    .getElementById("btn-delete-selected")
-    ?.addEventListener("click", deleteSelected);
-  document
-    .getElementById("btn-clear-selection")
-    ?.addEventListener("click", clearSelection);
-
-  // Audio play listener
-  try {
-    let currentAudio = null;
-    window.memedrop.onAudioPlay?.((filePath) => {
-      if (currentAudio) {
-        currentAudio.pause();
-        currentAudio = null;
-      }
-      const audioUrl = `file:///${filePath.replace(/\\/g, "/")}`;
-      const audio = new Audio(audioUrl);
-      audio.volume = (currentVolume || 75) / 100;
-      audio.play().catch(() => {});
-      currentAudio = audio;
-    });
-  } catch (e) {
-    console.warn("onAudioPlay not available", e);
-  }
-
-  // Load cached users list (displays immediately instead of waiting for broadcast)
-  if (window.memedrop.getCachedUsers) {
-    const cached = await window.memedrop.getCachedUsers();
-    if (cached) {
-      const el = document.getElementById("users-count");
-      if (el) {
-        el.textContent = `${cached.count} connectés`;
-        el.title = cached.users.map((u) => u.username).join("\n") || "";
-      }
-    }
-  }
 
   // Load trending GIFs if on that tab
   const activeTab = document.querySelector(".studio-tab.active");
@@ -2613,41 +1646,15 @@ document.addEventListener("paste", async (e) => {
 async function loadUsers() {
   try {
     const users = await window.memedrop.getUsers();
-    const recentTargets = (await window.memedrop.listTargets()) || [];
-    // Populate multi-target select: Discord users + recent targets + custom targets
-    if (panelTarget) {
-      panelTarget.innerHTML = "";
-      const added = new Set();
-      // Discord users first
-      if (users && users.length > 0) {
+    if (users && users.length > 0) {
+      const suggestions = document.getElementById("target-suggestions");
+      if (suggestions) {
+        suggestions.innerHTML = "";
         users.forEach((u) => {
-          const v = "@" + u.username;
-          added.add(v);
-          const opt = document.createElement("option");
-          opt.value = v;
-          opt.textContent = v;
-          panelTarget.appendChild(opt);
+          const option = document.createElement("option");
+          option.value = "@" + u.username;
+          suggestions.appendChild(option);
         });
-      }
-      // Recent targets (not already in Discord users)
-      for (const rt of recentTargets) {
-        if (!added.has(rt)) {
-          added.add(rt);
-          const opt = document.createElement("option");
-          opt.value = rt;
-          opt.textContent = rt;
-          panelTarget.appendChild(opt);
-        }
-      }
-      // Add custom targets (persisted in localStorage)
-      for (const ct of customTargets) {
-        if (!added.has(ct)) {
-          added.add(ct);
-          const opt = document.createElement("option");
-          opt.value = ct;
-          opt.textContent = ct;
-          panelTarget.appendChild(opt);
-        }
       }
     }
   } catch (e) {

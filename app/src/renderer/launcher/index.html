@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="fr">
+    <head>
+        <meta charset="UTF-8" />
+        <title>MemeDrop QuickLauncher</title>
+        <link rel="stylesheet" href="./style.css" />
+    </head>
+    <body>
+        <div id="toast-container" class="toast-container"></div>
+
+        <!-- Topbar -->
+        <div class="topbar">
+            <div class="topbar-left">
+                <div class="logo">💧</div>
+                <div class="title">
+                    MemeDrop
+                    <span
+                        id="app-version-display"
+                        style="
+                            font-size: 12px;
+                            color: var(--text-dim);
+                            margin-left: 4px;
+                            font-weight: normal;
+                        "
+                    ></span>
+                </div>
+            </div>
+            <div class="topbar-center">
+                <div class="search-wrap">
+                    <span class="search-icon">🔍</span>
+                    <input
+                        type="text"
+                        id="search"
+                        class="search-input"
+                        placeholder="Rechercher un meme..."
+                    />
+                </div>
+            </div>
+            <div class="topbar-right">
+                <div id="conn-status" class="conn-badge conn--disconnected">
+                    ● Déconnecté
+                </div>
+                <div
+                    id="users-count"
+                    class="meme-count"
+                    title="Utilisateurs connectés"
+                >
+                    0 connectés
+                </div>
+                <div id="meme-count" class="meme-count">0 memes</div>
+                <button class="tb-btn" id="btn-side-panel">☰</button>
+            </div>
+        </div>
+
+        <!-- Global Update Banner -->
+        <div
+            id="global-update-banner"
+            class="hidden"
+            style="
+                background: var(--accent);
+                color: white;
+                padding: 8px 16px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-radius: 4px;
+                margin: 8px 16px;
+            "
+        >
+            <div style="font-weight: 500">
+                🚀
+                <span id="global-update-text">Mise à jour disponible...</span>
+            </div>
+            <button
+                id="global-update-btn"
+                class="primary hidden"
+                style="
+                    background: white;
+                    color: var(--accent);
+                    padding: 4px 12px;
+                    font-weight: bold;
+                    border: none;
+                    border-radius: 4px;
+                "
+            >
+                Installer et Redémarrer
+            </button>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <button
+                    class="tb-btn"
+                    id="btn-open-folder"
+                    title="Ouvrir le dossier Memes"
+                >
+                    📁
+                </button>
+                <button
+                    class="tb-btn"
+                    id="btn-clipboard"
+                    title="Coller du presse-papier"
+                >
+                    📋
+                </button>
+                <div class="tb-sep"></div>
+                <button class="tb-btn" id="btn-refresh" title="Actualiser">
+                    🔄
+                </button>
+                <div class="tb-sep"></div>
+                <button
+                    class="tb-btn"
+                    id="btn-collage-mode"
+                    title="Sélectionner plusieurs images pour un collage"
+                >
+                    🖼️ Collage
+                </button>
+            </div>
+            <div id="collage-bar" class="collage-bar hidden">
+                <span id="collage-count-label">0/4 images</span>
+                <button
+                    id="btn-send-collage"
+                    class="primary"
+                    style="padding: 4px 14px"
+                >
+                    📤 Envoyer le collage
+                </button>
+                <button
+                    id="btn-clear-collage"
+                    class="tb-btn"
+                    title="Annuler le mode collage"
+                >
+                    ✕
+                </button>
+            </div>
+
+            <div class="studio-tabs">
+                <button class="studio-tab active" data-tab="grid">Grid</button>
+                <button class="studio-tab" data-tab="giphy">GIF Search</button>
+                <button class="studio-tab" data-tab="weblink">Lien Web</button>
+                <button class="studio-tab" data-tab="settings">
+                    ⚙️ Réglages
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Views -->
+
+        <!-- GRID -->
+        <div id="tab-grid" class="tab-content">
+            <div id="grid-empty" class="grid-empty hidden">Aucun meme</div>
+            <div id="grid" class="grid"></div>
+            <!-- Selection action bar -->
+            <div id="selection-action-bar" class="selection-action-bar hidden">
+                <span id="selected-count">0 sélectionné</span>
+                <div class="selection-actions">
+                    <button id="btn-delete-selected" class="danger-btn">
+                        🗑 Supprimer
+                    </button>
+                    <button id="btn-clear-selection" class="ghost-btn">
+                        Annuler
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STUDIO -->
+        <div id="tab-studio" class="tab-content hidden" style="padding: 16px">
+            <div
+                class="studio-inputs"
+                style="display: flex; flex-direction: column; gap: 8px"
+            >
+                <select id="studio-template" class="input"></select>
+                <input
+                    type="text"
+                    id="studio-top-text"
+                    class="input"
+                    placeholder="Texte Haut"
+                />
+                <input
+                    type="text"
+                    id="studio-bottom-text"
+                    class="input"
+                    placeholder="Texte Bas"
+                />
+                <button
+                    id="btn-studio-generate"
+                    class="primary"
+                    style="padding: 8px"
+                >
+                    Générer Meme
+                </button>
+            </div>
+            <div
+                class="studio-canvas"
+                style="margin-top: 16px; text-align: center"
+            >
+                <canvas
+                    id="studio-preview"
+                    width="480"
+                    height="270"
+                    style="
+                        max-width: 100%;
+                        border-radius: 8px;
+                        background: #1a1230;
+                    "
+                ></canvas>
+            </div>
+        </div>
+
+        <!-- GIPHY -->
+        <div id="tab-giphy" class="tab-content hidden" style="padding: 16px">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px">
+                <input
+                    type="text"
+                    id="giphy-search"
+                    class="input flex-1"
+                    placeholder="Chercher un GIF..."
+                />
+                <button
+                    id="btn-giphy-search"
+                    class="primary"
+                    style="padding: 0 12px"
+                >
+                    Go
+                </button>
+                <button
+                    id="btn-giphy-trending"
+                    class="ghost"
+                    style="padding: 0 12px"
+                >
+                    Trending
+                </button>
+            </div>
+            <div id="giphy-grid" class="giphy-grid"></div>
+        </div>
+
+        <!-- LIEN WEB -->
+        <div id="tab-weblink" class="tab-content hidden" style="padding: 16px">
+            <h3 style="margin-bottom: 12px">Préparer un lien Web</h3>
+            <div style="display: flex; flex-direction: column; gap: 12px">
+                <input
+                    type="text"
+                    id="weblink-url"
+                    class="input"
+                    placeholder="URL du lien (ex: Twitter, YouTube, .mp4, .gif)"
+                />
+                <div
+                    id="weblink-resolve-status"
+                    style="
+                        font-size: 12px;
+                        color: var(--text-dim);
+                        min-height: 18px;
+                    "
+                ></div>
+                <button
+                    id="btn-weblink-send"
+                    class="primary"
+                    style="padding: 10px"
+                >
+                    ➡️ Configurer le Drop
+                </button>
+            </div>
+        </div>
+
+        <!-- REGLAGES -->
+        <div
+            id="tab-settings"
+            class="tab-content hidden"
+            style="padding: 16px; overflow-y: auto"
+        >
+            <!-- Carte mise à jour -->
+            <section
+                id="update-card"
+                style="
+                    margin-bottom: 16px;
+                    padding: 12px;
+                    border: 1px solid var(--accent);
+                    border-radius: 8px;
+                "
+            >
+                <h3 id="update-title" style="margin-top: 0">Mise à jour</h3>
+                <p
+                    id="update-msg"
+                    style="color: var(--text-dim); font-size: 14px"
+                >
+                    Vérification des mises à jour...
+                </p>
+                <div
+                    id="update-progress"
+                    class="hidden"
+                    style="
+                        width: 100%;
+                        height: 4px;
+                        background: #333;
+                        margin: 8px 0;
+                        border-radius: 2px;
+                    "
+                >
+                    <div
+                        id="update-progress-fill"
+                        style="
+                            width: 0%;
+                            height: 100%;
+                            background: var(--accent);
+                            border-radius: 2px;
+                            transition: width 0.2s;
+                        "
+                    ></div>
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 12px">
+                    <button
+                        id="update-check-btn"
+                        class="ghost"
+                        style="padding: 6px 12px"
+                    >
+                        Vérifier
+                    </button>
+                    <button
+                        id="update-download-btn"
+                        class="primary hidden"
+                        style="padding: 6px 12px"
+                    >
+                        Télécharger
+                    </button>
+                    <button
+                        id="update-install-btn"
+                        class="primary hidden"
+                        style="padding: 6px 12px"
+                    >
+                        Installer & Redémarrer
+                    </button>
+                </div>
+            </section>
+
+            <!-- Audio & Affichage -->
+            <section style="margin-bottom: 16px">
+                <h3>Audio & Affichage</h3>
+                <div
+                    style="
+                        display: flex;
+                        flex-direction: column;
+                        gap: 12px;
+                        margin-top: 8px;
+                    "
+                >
+                    <label
+                        style="display: flex; flex-direction: column; gap: 4px"
+                    >
+                        <span
+                            style="
+                                display: flex;
+                                justify-content: space-between;
+                            "
+                            >Volume vidéo
+                            <output id="volume-out">75%</output></span
+                        >
+                        <input
+                            type="range"
+                            id="setting-volume"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value="75"
+                        />
+                    </label>
+                    <label
+                        style="display: flex; flex-direction: column; gap: 4px"
+                    >
+                        <span
+                            style="
+                                display: flex;
+                                justify-content: space-between;
+                            "
+                            >Volume musique
+                            <output id="music-volume-out">75%</output></span
+                        >
+                        <input
+                            type="range"
+                            id="setting-music-volume"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value="75"
+                        />
+                    </label>
+                    <label
+                        style="display: flex; flex-direction: column; gap: 4px"
+                    >
+                        <span
+                            style="
+                                display: flex;
+                                justify-content: space-between;
+                            "
+                            >Opacité du Drop
+                            <output id="opacity-out">100%</output></span
+                        >
+                        <input
+                            type="range"
+                            id="setting-opacity"
+                            min="0.1"
+                            max="1.0"
+                            step="0.1"
+                            value="1.0"
+                        />
+                    </label>
+                    <label
+                        style="display: flex; flex-direction: column; gap: 4px"
+                    >
+                        <span
+                            style="
+                                display: flex;
+                                justify-content: space-between;
+                            "
+                            >Durée Image/GIF
+                            <output id="duration-out">4s</output></span
+                        >
+                        <input
+                            type="range"
+                            id="setting-duration"
+                            min="1"
+                            max="30"
+                            step="1"
+                            value="4"
+                        />
+                    </label>
+                    <label
+                        style="display: flex; flex-direction: column; gap: 4px"
+                    >
+                        <span
+                            style="
+                                display: flex;
+                                justify-content: space-between;
+                            "
+                            >Durée Max Vidéo
+                            <output id="video-duration-out">30s</output></span
+                        >
+                        <input
+                            type="range"
+                            id="setting-video-duration"
+                            min="5"
+                            max="60"
+                            step="1"
+                            value="30"
+                        />
+                    </label>
+                    <label
+                        style="
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            cursor: pointer;
+                        "
+                    >
+                        <input type="checkbox" id="setting-soundOnArrival" />
+                        Jouer un son à l'arrivée d'un Drop
+                    </label>
+                    <label
+                        style="
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            cursor: pointer;
+                        "
+                    >
+                        <input type="checkbox" id="setting-spotlightOnDrop" />
+                        Assombrir l'écran (Spotlight) lors d'un Drop
+                    </label>
+                    <label
+                        style="display: flex; flex-direction: column; gap: 4px"
+                    >
+                        Thème du médaillon
+                        <select id="setting-theme" class="input">
+                            <option value="classic">Classique</option>
+                            <option value="neon">Néon</option>
+                            <option value="fire">Feu</option>
+                            <option value="mono">Mono (Désactivé)</option>
+                        </select>
+                    </label>
+                    <label
+                        style="display: flex; flex-direction: column; gap: 4px"
+                    >
+                        Écran d'affichage
+                        <select id="setting-overlayDisplayId" class="input">
+                            <!-- Rempli dynamiquement -->
+                        </select>
+                    </label>
+                </div>
+            </section>
+
+            <!-- Système -->
+            <section style="margin-bottom: 16px">
+                <h3>Système</h3>
+                <div
+                    style="
+                        display: flex;
+                        flex-direction: column;
+                        gap: 12px;
+                        margin-top: 8px;
+                    "
+                >
+                    <label
+                        style="display: flex; flex-direction: column; gap: 4px"
+                    >
+                        URL du serveur bot
+                        <input
+                            type="text"
+                            id="setting-server"
+                            class="input"
+                            placeholder="wss://..."
+                            spellcheck="false"
+                        />
+                    </label>
+                    <label
+                        style="
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            cursor: pointer;
+                        "
+                    >
+                        <input type="checkbox" id="setting-autostart" />
+                        Lancer au démarrage de Windows (Silencieux)
+                    </label>
+                    <label
+                        style="display: flex; flex-direction: column; gap: 4px"
+                    >
+                        État de réception (Mode Tranquille)
+                        <select id="setting-mute-mode" class="input">
+                            <option value="active">
+                                🟢 En ligne (Recevoir les drops)
+                            </option>
+                            <option value="mute-30">
+                                🔇 Muet - 30 minutes
+                            </option>
+                            <option value="mute-120">🔇 Muet - 2 heures</option>
+                            <option value="mute-inf">
+                                🔇 Muet - Jusqu'à réactivation
+                            </option>
+                            <option value="pause">
+                                🔴 Pause (Couper complètement la connexion)
+                            </option>
+                        </select>
+                    </label>
+                </div>
+            </section>
+
+            <!-- GIPHY API -->
+            <section style="margin-bottom: 16px">
+                <h3>GIPHY API</h3>
+                <div
+                    style="
+                        display: flex;
+                        flex-direction: column;
+                        gap: 12px;
+                        margin-top: 8px;
+                    "
+                >
+                    <label
+                        style="display: flex; flex-direction: column; gap: 4px"
+                    >
+                        Clé API (SDK Key)
+                        <input
+                            type="text"
+                            id="setting-giphy"
+                            class="input"
+                            placeholder="Colle ta clé API ici..."
+                            spellcheck="false"
+                        />
+                    </label>
+                </div>
+            </section>
+
+            <!-- DOSSIER MEMES -->
+            <section style="margin-bottom: 16px">
+                <h3>Dossier Memes</h3>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+                    <input type="text" id="setting-meme-folder" class="input flex-1" readonly placeholder="Documents/MemeDrop/memes (par défaut)">
+                    <button id="btn-choose-meme-folder" class="ghost" style="padding:6px 12px">📂 Parcourir</button>
+                </div>
+                <p style="font-size:11px;color:var(--text-dim);margin-top:4px">
+                    Les nouveaux memes seront sauvegardés dans ce dossier.
+                </p>
+            </section>
+
+            <!-- EXPORT / IMPORT -->
+            <section style="margin-bottom: 16px">
+                <h3>Sauvegarde</h3>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button id="btn-export-config" class="ghost" style="padding:6px 12px">📤 Exporter la config</button>
+                    <button id="btn-import-config" class="ghost" style="padding:6px 12px">📥 Importer la config</button>
+                </div>
+                <p style="font-size:11px;color:var(--text-dim);margin-top:4px">
+                    Exporte/importe tous les réglages, tags, favoris et groupes.
+                </p>
+            </section>
+
+            <!-- Appairage -->
+            <section style="margin-bottom: 16px">
+                <h3>Appairage</h3>
+                <p style="color: var(--text-dim); font-size: 14px">
+                    Tape <code>/link &lt;code&gt;</code> sur Discord.
+                </p>
+                <div
+                    id="pairing-code-display"
+                    style="
+                        font-family: monospace;
+                        font-size: 24px;
+                        font-weight: bold;
+                        margin: 8px 0;
+                        color: var(--accent);
+                    "
+                >
+                    000000
+                </div>
+                <button
+                    id="copy-code-btn"
+                    class="ghost"
+                    style="padding: 6px 12px"
+                >
+                    Copier le code
+                </button>
+
+                <h4 style="margin-top: 16px; margin-bottom: 8px">
+                    Serveurs liés
+                </h4>
+                <div
+                    id="servers-list-display"
+                    style="display: flex; flex-direction: column; gap: 4px"
+                ></div>
+            </section>
+        </div>
+
+        <!-- SIDE PANEL -->
+        <div id="side-panel" class="side-panel hidden">
+            <section>
+                <h3>Tags</h3>
+                <ul
+                    id="tag-list"
+                    class="tag-list"
+                    style="list-style: none; padding: 0; margin-bottom: 8px"
+                ></ul>
+                <div class="tag-input-bar" style="display: flex; gap: 4px">
+                    <input
+                        type="text"
+                        id="tag-input"
+                        class="input"
+                        placeholder="Tag..."
+                    />
+                    <button
+                        id="btn-tag-add"
+                        class="primary"
+                        style="padding: 0 8px"
+                    >
+                        +
+                    </button>
+                </div>
+            </section>
+
+            <section>
+                <h3>Favoris</h3>
+                <div
+                    id="favorites-list"
+                    style="display: flex; flex-direction: column; gap: 4px"
+                ></div>
+            </section>
+
+            <section>
+                <h3>Audio / Soundboard</h3>
+                <div
+                    id="audio-library"
+                    class="grid"
+                    style="margin-bottom: 8px"
+                ></div>
+                <button
+                    id="btn-soundboard-add"
+                    class="ghost"
+                    style="width: 100%; padding: 4px"
+                >
+                    Lier Audio
+                </button>
+                <ul
+                    id="soundboard-list"
+                    class="soundboard-list"
+                    style="list-style: none; padding: 0; margin-top: 8px"
+                ></ul>
+            </section>
+
+            <section>
+                <h3>Historique & Streaks</h3>
+                <div
+                    id="streak-counter"
+                    class="streak-counter"
+                    style="margin-bottom: 8px"
+                >
+                    🔥 Streak: 0
+                </div>
+                <ul
+                    id="history-list"
+                    style="
+                        list-style: none;
+                        padding: 0;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 4px;
+                    "
+                ></ul>
+                <h3 style="margin-top: 12px">Planifiés</h3>
+                <ul
+                    id="scheduled-list"
+                    style="list-style: none; padding: 0"
+                ></ul>
+            </section>
+
+            <section>
+                <h3>Groupes</h3>
+                <select
+                    id="group-select"
+                    class="input group-select"
+                    style="margin-bottom: 8px; width: 100%"
+                ></select>
+                <div style="display: flex; gap: 4px">
+                    <button id="btn-save-group" class="ghost flex-1">
+                        Sauver
+                    </button>
+                    <button id="btn-drop-group" class="primary flex-1">
+                        Drop
+                    </button>
+                    <button id="btn-drop-all" class="danger-btn" style="flex:1;padding:6px">
+                        📤 Tous
+                    </button>
+                </div>
+            </section>
+        </div>
+
+        <!-- DROP PANEL -->
+        <div id="drop-panel" class="drop-panel hidden">
+            <div class="panel-backdrop" id="panel-close-bg"></div>
+            <div class="panel">
+                <div class="panel-header">
+                    <h3>Envoyer Meme</h3>
+                    <div class="panel-close" id="btn-panel-close">✕</div>
+                </div>
+                <div id="panel-preview" class="panel-preview">
+                    <img id="panel-preview-img" />
+                </div>
+                <div class="panel-info">
+                    <div class="panel-name" id="panel-name">Nom du fichier</div>
+                    <div class="panel-meta" id="panel-meta">
+                        Taille / Format
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="field">
+                        <label style="display:flex;flex-direction:column;gap:4px">
+                            Cibles (Ctrl+clic pour multiples)
+                            <select id="panel-target" class="input" multiple size="4">
+                            </select>
+                            <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
+                                <input type="text" id="panel-target-add" class="input" placeholder="@pseudo" style="flex:1;min-width:100px;padding:4px 8px;font-size:11px">
+                                <button id="btn-add-target" class="ghost" style="padding:4px 8px;font-size:11px">+ Ajouter</button>
+                                <button id="btn-select-all-targets" class="ghost" style="font-size:10px;padding:2px 6px">Tout</button>
+                                <button id="btn-clear-targets" class="ghost" style="font-size:10px;padding:2px 6px">Effacer</button>
+                            </div>
+                        </label>
+                    </div>
+                    <div class="field">
+                        <label>Légende</label>
+                        <input
+                            type="text"
+                            id="panel-caption"
+                            class="input"
+                            placeholder="Message avec le drop..."
+                        />
+                    </div>
+                    <div class="field-row">
+                        <div class="field flex-1">
+                            <label>Audio</label>
+                            <select
+                                id="panel-audio-select"
+                                class="input"
+                            ></select>
+                        </div>
+                        <div class="field" style="width: 80px">
+                            <label>Vol.</label>
+                            <input
+                                type="range"
+                                id="panel-volume"
+                                min="0"
+                                max="100"
+                                value="100"
+                                style="width: 100%"
+                            />
+                        </div>
+                        <div class="field" style="width: 80px">
+                            <label>Durée</label>
+                            <input
+                                type="range"
+                                id="panel-duration"
+                                min="1"
+                                max="60"
+                                value="4"
+                                style="width: 100%"
+                            />
+                            <span id="panel-duration-out" style="font-size:10px;text-align:center;display:block">4s</span>
+                        </div>
+                    </div>
+                    <div class="field" style="margin-top: 8px">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                            <input type="checkbox" id="panel-rain" /> Mode Pluie (Spam)
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px">
+                            <input type="checkbox" id="panel-local-preview" /> Aperçu local
+                        </label>
+                    </div>
+                </div>
+                <div class="panel-status" id="panel-status"></div>
+                <div class="panel-footer">
+                    <button class="ghost" id="btn-preview">Aperçu</button>
+                    <button class="primary btn-send" id="btn-send">
+                        Envoyer le Drop
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Drag Overlay -->
+        <div id="dropzone" class="dropzone hidden">
+            <div class="dropzone-content">
+                <p>Glissez vos memes ici</p>
+            </div>
+        </div>
+
+        <script src="./app.js" type="module"></script>
+    </body>
+</html>
