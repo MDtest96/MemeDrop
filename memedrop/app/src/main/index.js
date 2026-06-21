@@ -853,9 +853,6 @@ ipcMain.handle("drop:sendUrl", async (_e, payload) => {
 // Audio handlers are managed by audio module
 
 ipcMain.handle("streak:get", () => null);
-ipcMain.handle("groups:get", () => []);
-ipcMain.handle("groups:save", () => {});
-ipcMain.handle("groups:drop", () => {});
 ipcMain.handle("schedule:get", () => []);
 ipcMain.handle("schedule:cancel", () => {});
 ipcMain.handle("studio:templates", () => []);
