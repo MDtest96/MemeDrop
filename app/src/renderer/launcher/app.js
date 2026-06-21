@@ -1555,7 +1555,7 @@ btnStudioGenerate?.addEventListener("click", async () => {
 let giphyOffset = 0;
 let giphyQuery = null;
 let giphyHasMore = true;
-const GIPHY_LIMIT = 24;
+const GIPHY_LIMIT = 50;
 
 async function loadGiphy(query, reset = true) {
   if (isGiphyLoading) return;
@@ -1636,9 +1636,9 @@ giphyGrid?.addEventListener("scroll", () => {
 
 function appendGiphyGrid(items) {
   if (!giphyGrid) return;
-  // Remove "loading..." indicator if present
-  const loadingEl = giphyGrid.querySelector(".giphy-loading");
-  if (loadingEl) loadingEl.remove();
+  // Remove button first, will re-add if needed
+  const existingBtn = giphyGrid.querySelector(".giphy-load-more");
+  if (existingBtn) existingBtn.remove();
 
   for (const gif of items) {
     const item = createGiphyItem(gif);
@@ -1651,8 +1651,20 @@ function appendGiphyGrid(items) {
     end.style.cssText = "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:11px;padding:8px";
     end.textContent = "— Plus de résultats —";
     giphyGrid.appendChild(end);
+  } else {
+    // Re-add the load more button
+    const btn = document.createElement("button");
+    btn.className = "giphy-load-more";
+    btn.textContent = "⬇ Afficher plus";
+    btn.style.cssText = "grid-column:1/-1;justify-self:center;padding:8px 20px;margin:12px;border:none;border-radius:var(--radius-sm);background:var(--bg-hover);color:var(--text);font-size:12px;cursor:pointer;font-weight:600";
+    btn.addEventListener("click", () => {
+      btn.textContent = "Chargement…";
+      btn.disabled = true;
+      giphyOffset += GIPHY_LIMIT;
+      loadGiphy(giphyQuery, false);
+    });
+    giphyGrid.appendChild(btn);
   }
-  autoLoadMoreGiphy();
 }
 
 function createGiphyItem(gif) {
@@ -1732,15 +1744,18 @@ function renderGiphyGrid(items) {
     if (item) giphyGrid.appendChild(item);
   }
   if (items.length >= GIPHY_LIMIT) {
-    const loader = document.createElement("p");
-    loader.className = "giphy-loading";
-    loader.style.cssText =
-      "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:12px;padding:12px";
-    loader.textContent = "⬇ Scrollez pour plus de résultats";
-    giphyGrid.appendChild(loader);
+    const loadMore = document.createElement("button");
+    loadMore.className = "giphy-load-more";
+    loadMore.textContent = "⬇ Afficher plus";
+    loadMore.style.cssText = "grid-column:1/-1;justify-self:center;padding:8px 20px;margin:12px;border:none;border-radius:var(--radius-sm);background:var(--bg-hover);color:var(--text);font-size:12px;cursor:pointer;font-weight:600";
+    loadMore.addEventListener("click", () => {
+      loadMore.textContent = "Chargement…";
+      loadMore.disabled = true;
+      giphyOffset += GIPHY_LIMIT;
+      loadGiphy(giphyQuery, false);
+    });
+    giphyGrid.appendChild(loadMore);
   }
-  // Auto-load more if content doesn't fill the container
-  autoLoadMoreGiphy();
 }
 
 function autoLoadMoreGiphy() {
