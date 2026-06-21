@@ -970,7 +970,7 @@ function renderHistory() {
 }
 
 // ── Drag & drop files from explorer ───────────────────────────────────────
-const grid = document.getElementById("grid");
+// grid is already declared in DOM refs section
 if (grid) {
   grid.addEventListener("dragover", (e) => {
     e.preventDefault();
