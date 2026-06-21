@@ -222,7 +222,10 @@ document.querySelectorAll(".studio-tab").forEach((tab) => {
       .forEach((c) => c.classList.add("hidden"));
     const content = document.getElementById("tab-" + tab.dataset.tab);
     if (content) content.classList.remove("hidden");
-    if (tab.dataset.tab === "giphy") loadTrending();
+    if (tab.dataset.tab === "giphy") {
+      isGiphyLoading = false; // Reset in case of previous error
+      loadTrending();
+    }
     if (tab.dataset.tab === "studio") updateStudioPreview();
     if (tab.dataset.tab === "weblink") loadWeblinkTargets();
   });
