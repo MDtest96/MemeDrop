@@ -968,7 +968,15 @@ ipcMain.handle("memes:sync", async (_e, memeData) => {
 });
 
 // ── Sync All: envoie tous les memes locaux aux autres utilisateurs ─────
+let _syncAllHasRun = false;
+
 ipcMain.handle("memes:syncAll", async () => {
+  if (_syncAllHasRun) {
+    console.log("[memes:syncAll] already synced this session, skipping");
+    return { ok: true, count: 0, skipped: true };
+  }
+  _syncAllHasRun = true;
+
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     return { ok: false, error: "Not connected" };
   }
@@ -1014,7 +1022,11 @@ ipcMain.handle("memes:syncAll", async () => {
 function cleanupDuplicateSharedMemes() {
   try {
     const memeFolder = getMemeFolder(store, app);
-    if (!fs.existsSync(memeFolder)) return;
+    console.log("[cleanup] checking folder:", memeFolder);
+    if (!fs.existsSync(memeFolder)) {
+      console.log("[cleanup] folder does not exist");
+      return;
+    }
 
     const files = fs.readdirSync(memeFolder);
     const byName = {}; // originalName -> [{file, path, mtime}]

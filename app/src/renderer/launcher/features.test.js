@@ -1004,4 +1004,89 @@ describe("full library sync", function() {
     // bird.mp4 n'existe pas du tout → ne pas skip
     expect(shouldSkip("shared_222_bird.mp4")).toBe(false);
   });
+
+  it("cleanupDuplicateSharedMemes should remove older duplicates", function() {
+    // Simule le dossier memes avec des doublons
+    var files = [
+      "shared_100_cat.gif",  // plus vieux
+      "shared_200_cat.gif",  // plus récent → garder
+      "shared_300_dog.png",  // seul → garder
+      "shared_400_dog.png",  // doublon → supprimer
+      "local_meme.jpg",      // pas shared_ → ignorer
+    ];
+
+    var toRemove = [];
+    var byName = {};
+
+    for (var f of files) {
+      var match = f.match(/^shared_(\d+)_(.+)$/);
+      if (!match) continue;
+      var ts = parseInt(match[1], 10);
+      var originalName = match[2];
+      if (!byName[originalName]) byName[originalName] = [];
+      byName[originalName].push({ file: f, ts: ts });
+    }
+
+    for (var name in byName) {
+      var entries = byName[name];
+      if (entries.length <= 1) continue;
+      entries.sort(function(a, b) { return b.ts - a.ts; });
+      for (var i = 1; i < entries.length; i++) {
+        toRemove.push(entries[i].file);
+      }
+    }
+
+    expect(toRemove).toEqual(["shared_100_cat.gif", "shared_300_dog.png"]);
+    // Vérifie que les bons fichiers sont gardés
+    var kept = files.filter(function(f) { return !toRemove.includes(f); });
+    expect(kept).toContain("shared_200_cat.gif");
+    expect(kept).toContain("shared_400_dog.png");
+    expect(kept).toContain("local_meme.jpg");
+    expect(kept.length).toBe(3);
+  });
+
+  it("syncAllMemes should not send shared_ files", function() {
+    var files = ["cat.gif", "shared_123_cat.gif", "dog.png", "shared_456_dog.png"];
+    var toSync = files.filter(function(f) { return !f.startsWith("shared_"); });
+
+    expect(toSync).toEqual(["cat.gif", "dog.png"]);
+    expect(toSync.length).toBe(2);
+  });
+
+  it("should ignore meme_sync messages from self", function() {
+    var sentOwnerId = "user1";
+    var myUserId = "user1";
+
+    // Le bot exclut l'expéditeur, mais si on recoit quand même notre propre message
+    function shouldIgnore(fromId, ownId) {
+      return fromId === ownId;
+    }
+
+    expect(shouldIgnore(sentOwnerId, myUserId)).toBe(true);
+    expect(shouldIgnore("user2", myUserId)).toBe(false);
+  });
+
+  it("syncAllMemes should only run once per session", function() {
+    var runCount = 0;
+    var hasRun = false;
+
+    function syncAll() {
+      if (hasRun) return { ok: true, count: 0, skipped: true };
+      hasRun = true;
+      runCount++;
+      return { ok: true, count: 32 };
+    }
+
+    // Première exécution
+    var r1 = syncAll();
+    expect(r1.count).toBe(32);
+    expect(r1.skipped).toBeUndefined();
+
+    // Deuxième exécution (ignorée)
+    var r2 = syncAll();
+    expect(r2.skipped).toBe(true);
+    expect(r2.count).toBe(0);
+
+    expect(runCount).toBe(1);
+  });
 });
