@@ -3304,12 +3304,53 @@ document.addEventListener("paste", async (e) => {
   const text = e.clipboardData.getData("text");
   if (isMediaUrl(text)) {
     try {
-      // Résoudre l'URL (Twitter/X, YouTube, etc. → URL media directe)
-      let downloadUrl = text.trim();
+      const rawUrl = text.trim();
+      const isSocialUrl = /youtube\.com|youtu\.be|spotify\.com|open\.spotify\.com/i.test(rawUrl);
+
+      if (isSocialUrl && window.memedrop.resolveUrl) {
+        // YouTube/Spotify → résoudre pour avoir la preview, mais garder l'URL originale
+        const resolved = await window.memedrop.resolveUrl(rawUrl);
+
+        // Télécharger la thumbnail pour la preview (mais on garde l'URL originale)
+        let downloaded = null;
+        if (resolved && resolved.url && !resolved.unresolved) {
+          try {
+            downloaded = await window.memedrop.downloadUrl(resolved.url);
+          } catch {}
+        }
+
+        if (downloaded) {
+          // Marquer comme weblink pour que l'envoi utilise l'URL originale
+          downloaded.url = rawUrl;
+          downloaded.isWeblink = true;
+          allMemes.unshift(downloaded);
+          renderGrid();
+          toast(`📥 ${downloaded.name} (lien ${resolved.kind || 'media'})`);
+          window.memedrop.syncMeme(downloaded).catch(() => {});
+          openDropPanel(downloaded);
+        } else {
+          // Fallback: saving URL only
+          const pseudoMeme = {
+            name: rawUrl.split("/").pop()?.split("?")[0] || "media",
+            url: rawUrl,
+            kind: resolved?.kind || "image",
+            size: 0,
+            isWeblink: true,
+          };
+          allMemes.unshift(pseudoMeme);
+          renderGrid();
+          toast(`📥 ${pseudoMeme.name} (lien)`);
+          openDropPanel(pseudoMeme);
+        }
+        return;
+      }
+
+      // URL media directe (Giphy, Tenor, Twitter, etc.)
+      let downloadUrl = rawUrl;
       if (window.memedrop.resolveUrl) {
         const resolved = await window.memedrop.resolveUrl(downloadUrl);
         if (!resolved.unresolved && resolved.url) {
-          downloadUrl = resolved.url; // Utiliser l'URL résolue
+          downloadUrl = resolved.url;
         }
       }
       const downloaded = await window.memedrop.downloadUrl(downloadUrl);
