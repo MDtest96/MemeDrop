@@ -13,6 +13,7 @@ const {
 const path = require("path");
 const fs = require("fs");
 const WebSocket = require("ws");
+const crypto = require("crypto");
 const { setupSettings } = require("./modules/settings");
 const { setupUpdater } = require("./modules/updater");
 const { setupHistory } = require("./modules/history");
@@ -44,6 +45,18 @@ function getMimeFromExt(ext) {
     ".ogg": "audio/ogg",
   };
   return map[ext.toLowerCase()] || "image/png";
+}
+
+// ── Debounce: éviter les notifications en rafale ────────────────────────
+let _libraryChangedTimer = null;
+function notifyLibraryChanged() {
+  if (_libraryChangedTimer) clearTimeout(_libraryChangedTimer);
+  _libraryChangedTimer = setTimeout(() => {
+    _libraryChangedTimer = null;
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send("library:changed");
+    }
+  }, 500);
 }
 
 const DEFAULT_SERVER =
@@ -531,6 +544,28 @@ function connectWS() {
               break;
             }
 
+            // Vérifier par hash SHA256 (premiers 4KB) pour déduplication fiable
+            try {
+              const incomingBuffer = Buffer.from(data.buffer, "base64");
+              const incomingHash = crypto.createHash("sha256").update(incomingBuffer.slice(0, 4096)).digest("hex");
+              const hashDuplicate = existingFiles.some(function(f) {
+                if (!f.startsWith("shared_")) return false;
+                try {
+                  const existingPath = path.join(memeFolder, f);
+                  const existingRaw = fs.readFileSync(existingPath);
+                  const existingHash = crypto.createHash("sha256").update(existingRaw.slice(0, 4096)).digest("hex");
+                  return existingHash === incomingHash;
+                } catch { return false; }
+              });
+              if (hashDuplicate) {
+                console.log("[ws] meme_sync skipped (duplicate hash):", safeName);
+                break;
+              }
+            } catch (e) {
+              console.warn("[ws] hash check failed:", e.message);
+              // Continuer même si le hash échoue
+            }
+
             fs.writeFileSync(destPath, Buffer.from(data.buffer, "base64"));
 
             // Ajouter le tag "importé" au fichier importé
@@ -554,10 +589,8 @@ function connectWS() {
                 });
               }
             }
-            // Notifier aussi library:changed pour la cohérence
-            for (const w of BrowserWindow.getAllWindows()) {
-              if (!w.isDestroyed()) w.webContents.send("library:changed");
-            }
+            // Notifier aussi library:changed de façon débouncée
+            notifyLibraryChanged();
           } else if (data.url) {
             // URL seulement → laisser le renderer la downloader
             for (const w of BrowserWindow.getAllWindows()) {
@@ -803,6 +836,8 @@ if (!gotLock) {
 
     // Nettoyer les doublons shared_* au démarrage
     cleanupDuplicateSharedMemes();
+    // Migrer les noms des anciens hiddenMemes vers hiddenMemeNames
+    migrateHiddenMemeNames();
 
     // Debug shortcuts — work even when the overlay (which is non-focusable)
     // can't receive keyboard events normally. We use Ctrl+Alt+X combos so we
@@ -875,6 +910,9 @@ ipcMain.handle("drop:send", async (_e, payload) => {
       console.log("[drop:send] audioPath:", payload.audioPath);
       console.log("[drop:send] filePath:", payload.filePath);
       formattedPayload = await formatQuickDropPayload(payload);
+      if (formattedPayload.warning) {
+        console.warn("[drop:send] warning:", formattedPayload.warning);
+      }
       console.log("[drop:send] formattedPayload.music:", formattedPayload.music ? "PRESENT - " + formattedPayload.music.name : "NULL");
     }
 
@@ -965,14 +1003,18 @@ ipcMain.handle("memes:sync", async (_e, memeData) => {
 });
 
 // ── Sync All: envoie tous les memes locaux aux autres utilisateurs ─────
-let _syncAllHasRun = false;
+const SYNC_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes entre deux sync
 
 ipcMain.handle("memes:syncAll", async (_e, force) => {
-  if (!force && _syncAllHasRun) {
-    console.log("[memes:syncAll] already synced this session, skipping");
-    return { ok: true, count: 0, skipped: true };
+  const lastSync = store.get("lastSyncTimestamp") || 0;
+  const now = Date.now();
+
+  if (!force && (now - lastSync) < SYNC_COOLDOWN_MS) {
+    const remaining = Math.ceil((SYNC_COOLDOWN_MS - (now - lastSync)) / 1000);
+    console.log("[memes:syncAll] cooldown active, retry in", remaining, "s");
+    return { ok: true, count: 0, skipped: true, cooldown: remaining };
   }
-  _syncAllHasRun = true;
+  store.set("lastSyncTimestamp", now);
 
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     return { ok: false, error: "Not connected" };
@@ -1064,6 +1106,30 @@ function cleanupDuplicateSharedMemes() {
     if (removed > 0) console.log("[cleanup] removed", removed, "duplicate shared memes");
   } catch (err) {
     console.error("[cleanup] error:", err.message);
+  }
+}
+
+// ── Migration: extraire les noms des anciens hiddenMemes ──────────────
+function migrateHiddenMemeNames() {
+  try {
+    const hiddenMemes = store.get("hiddenMemes") || [];
+    const hiddenNames = new Set(store.get("hiddenMemeNames") || []);
+
+    let changed = false;
+    for (const fullPath of hiddenMemes) {
+      const name = path.basename(fullPath);
+      if (!hiddenNames.has(name)) {
+        hiddenNames.add(name);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      store.set("hiddenMemeNames", Array.from(hiddenNames));
+      console.log("[migrate] hiddenMemeNames migrated:", hiddenNames.size, "names");
+    }
+  } catch (err) {
+    console.error("[migrate] hiddenMemeNames error:", err.message);
   }
 }
 
