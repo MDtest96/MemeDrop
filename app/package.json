@@ -1,6 +1,6 @@
 {
   "name": "memedrop",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "MemeDrop Unified App",
   "author": "MDtest96",
   "main": "src/main/index.js",
