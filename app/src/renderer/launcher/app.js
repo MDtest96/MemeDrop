@@ -3292,6 +3292,8 @@ function isMediaUrl(text) {
   if (/x\.com/i.test(text)) return true;
   if (/youtube\.com/i.test(text)) return true;
   if (/youtu\.be/i.test(text)) return true;
+  if (/spotify\.com/i.test(text)) return true;
+  if (/open\.spotify\.com/i.test(text)) return true;
   return false;
 }
 

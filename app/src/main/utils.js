@@ -223,6 +223,22 @@ async function resolveMediaUrl(url) {
     } catch { /* ignore */ }
   }
 
+  // 6. Spotify → sauvegarder l'URL pour le partage
+  if (/open\.spotify\.com/i.test(url) || /spotify\.com/i.test(url)) {
+    try {
+      // Tentative de récupérer la cover via l'API oEmbed
+      const res = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.thumbnail_url) {
+          return { url: data.thumbnail_url, kind: 'image', mime: 'image/jpeg', sourceUrl: url };
+        }
+      }
+    } catch { /* ignore */ }
+    // Fallback: retourner l'URL Spotify comme weblink
+    return { url, kind: 'image', mime: 'text/uri-list', unresolved: true, sourceUrl: url };
+  }
+
   // Fallback universel
   return { url, kind: 'image', mime: 'image/jpeg', unresolved: true };
 }
