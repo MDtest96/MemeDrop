@@ -608,6 +608,16 @@ function connectWS() {
           console.error("[ws] meme_sync error:", err.message);
         }
         break;
+      case "library_sync_request":
+        // Un autre utilisateur demande les memes → forcer un sync
+        console.log("[ws] library_sync_request received, forcing sync");
+        // Forcer syncAllMemes dans le renderer
+        for (const w of BrowserWindow.getAllWindows()) {
+          if (!w.isDestroyed()) {
+            w.webContents.send("library:sync-requested");
+          }
+        }
+        break;
       case "ping":
         ws.send(JSON.stringify({ type: "pong" }));
         break;
@@ -1053,6 +1063,19 @@ ipcMain.handle("memes:syncAll", async (_e, force) => {
     return { ok: true, count: synced };
   } catch (err) {
     console.error("[memes:syncAll] error:", err.message);
+    return { ok: false, error: err.message };
+  }
+});
+
+// ── Demander aux autres d'envoyer leurs memes ─────────────────────────
+ipcMain.handle("library:requestSync", async () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return { ok: false, error: "Not connected" };
+  }
+  try {
+    ws.send(JSON.stringify({ type: "library_sync_request" }));
+    return { ok: true };
+  } catch (err) {
     return { ok: false, error: err.message };
   }
 });

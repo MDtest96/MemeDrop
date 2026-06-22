@@ -98,10 +98,16 @@ contextBridge.exposeInMainWorld("memedrop", {
   importConfig: (data) => ipcRenderer.invoke("tools:importConfig", data),
   syncMeme: (data) => ipcRenderer.invoke("memes:sync", data),
   syncAllMemes: (force) => ipcRenderer.invoke("memes:syncAll", force),
+  requestLibrarySync: () => ipcRenderer.invoke("library:requestSync"),
   onMemeSynced: (callback) => {
     const fn = (_e, meme) => callback(meme);
     ipcRenderer.on("meme:synced", fn);
     return () => ipcRenderer.off("meme:synced", fn);
+  },
+  onLibrarySyncRequested: (callback) => {
+    const fn = () => callback();
+    ipcRenderer.on("library:sync-requested", fn);
+    return () => ipcRenderer.off("library:sync-requested", fn);
   },
 
   // Settings & Updater

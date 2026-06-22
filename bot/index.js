@@ -552,6 +552,30 @@ wss.on("connection", (ws) => {
       );
       return;
     }
+
+    // ── Library sync request: un utilisateur demande les memes des autres ──
+    if (msg.type === "library_sync_request") {
+      const meta = wsMeta.get(ws);
+      if (!meta?.userId) {
+        sendJson(ws, { type: "library_sync_request_ack", ok: false, error: "Not linked" });
+        return;
+      }
+      // Demandeur = meta.userId, on broadcast aux AUTRES uniquement
+      let asked = 0;
+      for (const [uid, uLink] of userLinks) {
+        if (uid !== meta.userId) {
+          for (const sock of uLink.sockets) {
+            if (sock.readyState === 1) {
+              sendJson(sock, { type: "library_sync_request", from: meta.userId });
+              asked++;
+            }
+          }
+        }
+      }
+      sendJson(ws, { type: "library_sync_request_ack", ok: true, asked });
+      console.log(`[library_sync_request] ${meta.userId} asked ${asked} user(s)`);
+      return;
+    }
   });
 
   ws.on("close", () => {

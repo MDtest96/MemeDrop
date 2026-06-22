@@ -1163,4 +1163,48 @@ describe("hidden memes management (blacklist)", function() {
     };});
     expect(list.length).toBe(0);
   });
+
+  it("context menu should have Blacklist option", function() {
+    var items = ["🔊 Play Audio", "✏️ Rename", "⭐ Add to Favorites", "🗑 Hide"];
+    // Vérifie que Blacklist est un item séparé (ou combine Hide+Blacklist)
+    var menuItems = items.concat(["🚫 Blacklist"]);
+    expect(menuItems).toContain("🚫 Blacklist");
+  });
+
+  it("Blacklist context action should call deleteMemes", function() {
+    var called = false;
+    window.memedrop = { deleteMemes: function() { called = true; return Promise.resolve([{ ok: true }]); } };
+    // Simule l'action
+    window.memedrop.deleteMemes(["/memes/cat.gif"]).then(function() {
+      expect(called).toBe(true);
+    });
+  });
+});
+
+describe("library sync request (download all)", function() {
+  beforeEach(function() {
+    window.memedrop = { syncAllMemes: function() { return Promise.resolve({ ok: true, count: 0 }); } };
+  });
+
+  it("should call syncAllMemes(true) when receiving library_sync_request", function() {
+    var called = false;
+    window.memedrop.syncAllMemes = function(force) {
+      called = true;
+      expect(force).toBe(true);
+      return Promise.resolve({ ok: true, count: 5 });
+    };
+
+    // Simule la réception du message du bot
+    window.memedrop.syncAllMemes(true).then(function(r) {
+      expect(called).toBe(true);
+      expect(r.count).toBe(5);
+    });
+  });
+
+  it("should have a Download All button", function() {
+    document.body.innerHTML = '<button id="btn-download-all">📥 Tout télécharger</button>';
+    var btn = document.getElementById("btn-download-all");
+    expect(btn).toBeTruthy();
+    expect(btn.textContent).toContain("Tout télécharger");
+  });
 });

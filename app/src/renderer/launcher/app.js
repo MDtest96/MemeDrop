@@ -769,6 +769,13 @@ document.getElementById("btn-sync-library")?.addEventListener("click", async () 
   if (r && r.ok) toast(`📤 ${r.count} meme(s) partagé(s)`);
   else toast("❌ Sync échoué", "error");
 });
+document.getElementById("btn-download-all")?.addEventListener("click", async () => {
+  if (!window.memedrop.requestLibrarySync) return toast("Fonction non disponible", "error");
+  toast("📥 Demande de synchronisation envoyée…");
+  const r = await window.memedrop.requestLibrarySync();
+  if (r && r.ok) toast(`📥 Demande envoyée, les autres vont t'envoyer leurs memes`);
+  else toast("❌ Échec de la demande", "error");
+});
 document
   .getElementById("btn-open-folder")
   ?.addEventListener("click", () => window.memedrop.openMemeFolder());
@@ -1267,6 +1274,16 @@ function showContextMenu(meme, x, y) {
       allMemes = allMemes.filter((m) => m.path !== meme.path);
       renderGrid();
       toast(`🗑 "${meme.name}" caché`);
+    },
+  });
+
+  items.push({
+    label: "🚫 Blacklist",
+    action: async () => {
+      await window.memedrop.deleteMemes([meme.path]);
+      allMemes = allMemes.filter((m) => m.path !== meme.path);
+      renderGrid();
+      toast(`🚫 "${meme.name}" blacklisté (ne sera pas réimporté)`);
     },
   });
 
@@ -2597,6 +2614,18 @@ async function setupFileWatcher() {
     });
   } catch (e) {
     console.warn("onMemeSynced not available", e);
+  }
+
+  // Écouter les demandes de sync des autres utilisateurs
+  try {
+    window.memedrop.onLibrarySyncRequested(() => {
+      console.log("[sync] library sync requested by another user, sending memes...");
+      if (window.memedrop.syncAllMemes) {
+        window.memedrop.syncAllMemes(true).catch(() => {});
+      }
+    });
+  } catch (e) {
+    console.warn("onLibrarySyncRequested not available", e);
   }
 }
 
