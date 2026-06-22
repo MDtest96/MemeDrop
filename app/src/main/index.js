@@ -501,7 +501,11 @@ function connectWS() {
       case "meme_sync":
         try {
           const { data } = msg;
-          if (!data || !data.name) break;
+          if (!data || !data.name) {
+            console.log("[ws] meme_sync ignored: no data/name");
+            break;
+          }
+          console.log("[ws] meme_sync received:", data.name, "from", msg.from?.username || "unknown");
           const memeFolder = getMemeFolder(store, app);
           if (!fs.existsSync(memeFolder))
             fs.mkdirSync(memeFolder, { recursive: true });
@@ -922,6 +926,7 @@ ipcMain.handle("memes:sync", async (_e, memeData) => {
       data.buffer = raw.toString("base64");
       data.mime = getMimeFromExt(path.extname(memeData.path));
     }
+    console.log("[memes:sync] sending", data.name, "(" + (data.buffer ? data.buffer.length + " bytes base64" : "URL only") + ")");
     ws.send(JSON.stringify({ type: "meme_sync", data }));
     return { ok: true };
   } catch (err) {

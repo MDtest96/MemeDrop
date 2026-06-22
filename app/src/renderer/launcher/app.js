@@ -2143,6 +2143,30 @@ panelTargetAdd?.addEventListener("keydown", (e) => {
   if (e.key === "Enter") addCustomTarget();
 });
 
+// Remove selected custom target
+document.getElementById("btn-remove-target")?.addEventListener("click", () => {
+  if (!panelTarget) return;
+  const selected = Array.from(panelTarget.selectedOptions).map((o) => o.value.trim());
+  if (selected.length === 0) {
+    toast("Sélectionne une cible à retirer", "error");
+    return;
+  }
+  for (const val of selected) {
+    // Ne retirer que les cibles personnalisées
+    if (customTargets.has(val)) {
+      customTargets.delete(val);
+      // Retirer l'option du select
+      const opt = Array.from(panelTarget.options).find((o) => o.value === val);
+      if (opt) panelTarget.removeChild(opt);
+    }
+  }
+  saveCustomTargets();
+  const count = selected.filter((v) => customTargets.has(v)).length;
+  if (count > 0) {
+    toast(`✕ ${count} cible(s) retirée(s)`);
+  }
+});
+
 btnSaveGroup?.addEventListener("click", async () => {
   const name = prompt("Nom du groupe :");
   if (!name) return;

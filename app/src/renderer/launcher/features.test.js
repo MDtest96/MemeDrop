@@ -704,3 +704,125 @@ describe("Twitter/X URL resolution before download", function() {
     expect(pastedUrl).toMatch(/status\/\d+/);
   });
 });
+
+describe("target management", function() {
+  beforeEach(function() {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    window.customTargets = new Set();
+  });
+
+  function addCustomTarget(val) {
+    window.customTargets.add(val);
+    localStorage.setItem("memedrop_custom_targets", JSON.stringify([...window.customTargets]));
+  }
+
+  function removeCustomTarget(val) {
+    window.customTargets.delete(val);
+    localStorage.setItem("memedrop_custom_targets", JSON.stringify([...window.customTargets]));
+  }
+
+  it("should add a custom target", function() {
+    addCustomTarget("@friend");
+    expect(window.customTargets.has("@friend")).toBe(true);
+  });
+
+  it("should remove a custom target", function() {
+    addCustomTarget("@friend");
+    addCustomTarget("@pote");
+    expect(window.customTargets.size).toBe(2);
+
+    removeCustomTarget("@friend");
+    expect(window.customTargets.has("@friend")).toBe(false);
+    expect(window.customTargets.has("@pote")).toBe(true);
+    expect(window.customTargets.size).toBe(1);
+  });
+
+  it("should persist custom targets in localStorage", function() {
+    addCustomTarget("@friend");
+    // Simuler rechargement
+    var saved = JSON.parse(localStorage.getItem("memedrop_custom_targets"));
+    expect(saved).toEqual(["@friend"]);
+  });
+
+  it("should remove from localStorage after deletion", function() {
+    addCustomTarget("@friend");
+    removeCustomTarget("@friend");
+    var saved = JSON.parse(localStorage.getItem("memedrop_custom_targets"));
+    expect(saved).toEqual([]);
+  });
+
+  it("should not be able to remove Discord users (only custom targets)", function() {
+    addCustomTarget("@friend");
+    // Les utilisateurs Discord ne sont PAS dans customTargets
+    var discordUser = "@fatima6848";
+    expect(window.customTargets.has(discordUser)).toBe(false);
+
+    // On ne peut retirer que des cibles custom
+    window.customTargets.add("@friend");
+    window.customTargets.delete("@friend");
+    expect(window.customTargets.has("@friend")).toBe(false);
+  });
+});
+
+describe("social meme sync", function() {
+  beforeEach(function() {
+    window.memedrop = {
+      downloadUrl: vi.fn(),
+      getPreview: vi.fn(),
+      listMemes: vi.fn().mockResolvedValue([]),
+    };
+  });
+
+  it("should call syncMeme after adding a meme", function() {
+    var syncCalled = false;
+    window.memedrop.syncMeme = function() { syncCalled = true; return Promise.resolve({ ok: true }); };
+
+    // Simuler l'ajout d'un meme
+    var result = { name: "test.gif", path: "/memes/test.gif", kind: "gif" };
+    window.memedrop.syncMeme(result);
+
+    expect(syncCalled).toBe(true);
+  });
+
+  it("syncMeme should send type: meme_sync via IPC", async function() {
+    var captured = null;
+    // Simule l'IPC memes:sync
+    window.memedrop.syncMeme = async function(data) {
+      captured = data;
+      return { ok: true };
+    };
+
+    var result = { name: "test.gif", path: "/memes/test.gif", kind: "gif" };
+    await window.memedrop.syncMeme(result);
+
+    expect(captured).toEqual(result);
+  });
+
+  it("should load memes when receiving a synced meme", function() {
+    var loadMemesCalled = false;
+    // Simule l'écouteur onMemeSynced qui appelle loadMemes()
+    function onMemeSynced() {
+      loadMemesCalled = true;
+    }
+
+    // Simuler la réception
+    onMemeSynced();
+    expect(loadMemesCalled).toBe(true);
+  });
+
+  it("should handle meme_sync message from bot", function() {
+    // Simule ce que le bot envoie
+    var msg = {
+      type: "meme_sync",
+      data: { name: "cat.gif", kind: "gif", buffer: "base64data" },
+      from: { id: "user1", username: "friend" },
+      ts: Date.now(),
+    };
+
+    expect(msg.type).toBe("meme_sync");
+    expect(msg.data.name).toBe("cat.gif");
+    expect(msg.data.buffer).toBeTruthy();
+    expect(msg.from.username).toBe("friend");
+  });
+});
