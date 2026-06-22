@@ -202,8 +202,9 @@ const unsubConn = window.memedrop.onConnection((state) => {
       pairingDisplay.textContent = state.code || "------";
     } else if (state.status === "linked") {
       pairingDisplay.textContent = `Lié à ${state.user?.username || "inconnu"}`;
-      // Sync complet de la bibliothèque quand on se connecte
-      if (window.memedrop.syncAllMemes) {
+      // Sync complet de la bibliothèque une seule fois par session
+      if (window.memedrop.syncAllMemes && !window._hasSynced) {
+        window._hasSynced = true;
         window.memedrop.syncAllMemes().then(r => {
           if (r && r.ok) console.log("[sync] Bibliothèque partagée:", r.count, "memes");
         }).catch(() => {});

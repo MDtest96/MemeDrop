@@ -924,4 +924,84 @@ describe("full library sync", function() {
 
     expect(tags[destPath]).toEqual(["funny", "import\u00e9"]);
   });
+
+  it("should skip duplicate synced files (same original name)", function() {
+    var savedFiles = new Set();
+
+    function trySave(originalName) {
+      // Vérifier si on a déjà sauvé ce fichier (par son nom original)
+      var key = originalName.replace(/^shared_\d+_/, "");
+      if (savedFiles.has(key)) {
+        return "skipped";
+      }
+      savedFiles.add(key);
+      return "saved";
+    }
+
+    // Premier appel : sauvegardé
+    expect(trySave("shared_123_cat.gif")).toBe("saved");
+    // Deuxième appel (même fichier, timestamp différent) : ignoré
+    expect(trySave("shared_456_cat.gif")).toBe("skipped");
+    // Fichier différent : sauvegardé
+    expect(trySave("shared_789_dog.png")).toBe("saved");
+
+    expect(savedFiles.size).toBe(2);
+  });
+
+  it("should not trigger syncAllMemes multiple times", function() {
+    var syncCount = 0;
+    var hasSynced = false;
+
+    function onConnect() {
+      if (hasSynced) return; // Déjà fait
+      hasSynced = true;
+      syncCount++;
+    }
+
+    // Simuler plusieurs events "linked"
+    onConnect();
+    onConnect();
+    onConnect();
+
+    expect(syncCount).toBe(1);
+  });
+
+  it("syncAllMemes should track already-sent files", function() {
+    var sentFiles = new Set();
+    var memes = ["cat.gif", "cat.gif", "dog.png"];
+    var sent = [];
+
+    for (var m of memes) {
+      if (!sentFiles.has(m)) {
+        sentFiles.add(m);
+        sent.push(m);
+      }
+    }
+
+    expect(sent).toEqual(["cat.gif", "dog.png"]);
+    expect(sent.length).toBe(2);
+  });
+
+  it("should skip file if already saved with same original name (on receive)", function() {
+    var memeFolder = "/memes";
+    var existingFiles = ["shared_111_cat.gif", "dog.png"];
+
+    function shouldSkip(originalName) {
+      var baseName = originalName.replace(/^shared_\d+_/, "");
+      // Vérifier si un fichier shared_* avec le même nom original existe déjà
+      for (var f of existingFiles) {
+        if (f.replace(/^shared_\d+_/, "") === baseName) {
+          return f.startsWith("shared_"); // Skip seulement si déjà importé
+        }
+      }
+      return false;
+    }
+
+    // cat.gif existe déjà en tant que shared_111_cat.gif → skip
+    expect(shouldSkip("shared_222_cat.gif")).toBe(true);
+    // dog.png existe mais n'est PAS un shared_ (c'est un fichier local) → ne pas skip
+    expect(shouldSkip("shared_222_dog.png")).toBe(false);
+    // bird.mp4 n'existe pas du tout → ne pas skip
+    expect(shouldSkip("shared_222_bird.mp4")).toBe(false);
+  });
 });

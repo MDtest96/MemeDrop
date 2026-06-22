@@ -523,6 +523,17 @@ function connectWS() {
             const safeName = path.basename(data.name);
             const filename = `shared_${Date.now()}_${safeName}`;
             const destPath = path.join(memeFolder, filename);
+
+            // Vérifier si ce meme a déjà été importé (par nom original)
+            const existingFiles = fs.readdirSync(memeFolder);
+            const isDuplicate = existingFiles.some(function(f) {
+              return f.startsWith("shared_") && f.replace(/^shared_\d+_/, "") === safeName;
+            });
+            if (isDuplicate) {
+              console.log("[ws] meme_sync skipped (already imported):", safeName);
+              break;
+            }
+
             fs.writeFileSync(destPath, Buffer.from(data.buffer, "base64"));
 
             // Ajouter le tag "importé" au fichier importé
@@ -967,6 +978,9 @@ ipcMain.handle("memes:syncAll", async () => {
     let synced = 0;
 
     for (const file of files) {
+      // Ne pas partager les fichiers déjà importés (prefix shared_)
+      if (file.startsWith("shared_")) continue;
+
       const filePath = path.join(memeFolder, file);
       if (hidden.has(filePath)) continue; // Ne pas partager les memes cachés
 
