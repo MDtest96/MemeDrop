@@ -2560,11 +2560,19 @@ async function loadTriageState() {
   }
 }
 
-function updateTriageCount() {
+function updateTriageCount(filteredCount) {
   const el = document.getElementById("triage-count");
+  const countEl = document.getElementById("meme-count");
   if (el) {
-    const count = allMemes ? allMemes.length : 0;
-    el.textContent = `${count} memes`;
+    const total = allMemes ? allMemes.length : 0;
+    // Utiliser filteredCount passé en paramètre, ou le lire depuis le DOM
+    const visible = filteredCount !== undefined ? filteredCount :
+      (countEl ? parseInt(countEl.textContent, 10) || total : total);
+    if (visible !== total) {
+      el.textContent = `${visible} / ${total} memes`;
+    } else {
+      el.textContent = `${total} meme${total > 1 ? "s" : ""}`;
+    }
   }
 }
 
