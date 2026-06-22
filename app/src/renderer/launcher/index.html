@@ -49,6 +49,9 @@
                 </div>
                 <div id="meme-count" class="meme-count">0 memes</div>
                 <button class="tb-btn" id="btn-side-panel">☰</button>
+                <button class="tb-btn" id="btn-help" title="Raccourcis clavier">
+                    ❓
+                </button>
             </div>
         </div>
 
@@ -111,6 +114,14 @@
                 <div class="tb-sep"></div>
                 <button
                     class="tb-btn"
+                    id="btn-restore-hidden"
+                    title="Restaurer les memes cachés"
+                >
+                    ♻️ Restaurer
+                </button>
+                <div class="tb-sep"></div>
+                <button
+                    class="tb-btn"
                     id="btn-collage-mode"
                     title="Sélectionner plusieurs images pour un collage"
                 >
@@ -149,6 +160,78 @@
 
         <!-- GRID -->
         <div id="tab-grid" class="tab-content">
+            <!-- Filter bar -->
+            <div class="grid-filter-bar">
+                <div class="filter-row">
+                    <div class="triage-type-filters">
+                        <button class="triage-btn active" data-filter="all">
+                            Tous
+                        </button>
+                        <button class="triage-btn" data-filter="image">
+                            🖼
+                        </button>
+                        <button class="triage-btn" data-filter="gif">🎞</button>
+                        <button class="triage-btn" data-filter="video">
+                            🎬
+                        </button>
+                        <button class="triage-btn" data-filter="audio">
+                            🎵
+                        </button>
+                    </div>
+                    <select
+                        id="triage-sort-select"
+                        class="triage-select"
+                        title="Tri"
+                    >
+                        <option value="name">A-Z</option>
+                        <option value="name-desc">Z-A</option>
+                        <option value="date">📅 Récents</option>
+                        <option value="date-desc">📅 Anciens</option>
+                        <option value="favorites">⭐ Fav</option>
+                    </select>
+                    <select
+                        id="triage-fav-select"
+                        class="triage-select"
+                        title="Favoris"
+                    >
+                        <option value="all">Tous</option>
+                        <option value="favs">⭐ Fav</option>
+                        <option value="non-favs">☆ Non</option>
+                    </select>
+                    <button
+                        id="btn-toggle-triage-advanced"
+                        class="triage-toggle-btn"
+                        title="Filtres avancés (tags, recherche)"
+                    >
+                        🔍
+                    </button>
+                    <span id="triage-count" class="triage-count"></span>
+                </div>
+                <!-- Advanced filters (collapsible) -->
+                <div id="triage-advanced" class="triage-advanced hidden">
+                    <div class="filter-row">
+                        <select
+                            id="triage-tag-select"
+                            class="triage-select"
+                            multiple
+                            size="3"
+                            title="Tags"
+                        ></select>
+                        <input
+                            type="text"
+                            id="triage-search"
+                            class="triage-input"
+                            placeholder="Filtrer par nom..."
+                        />
+                        <button id="btn-apply-triage" class="triage-apply-btn">
+                            ✅
+                        </button>
+                        <button id="btn-reset-triage" class="triage-reset-btn">
+                            ↺
+                        </button>
+                    </div>
+                </div>
+            </div>
             <div id="grid-empty" class="grid-empty hidden">Aucun meme</div>
             <div id="grid" class="grid"></div>
             <!-- Selection action bar -->
@@ -156,7 +239,7 @@
                 <span id="selected-count">0 sélectionné</span>
                 <div class="selection-actions">
                     <button id="btn-delete-selected" class="danger-btn">
-                        🗑 Supprimer
+                        🗑 Cacher
                     </button>
                     <button id="btn-clear-selection" class="ghost-btn">
                         Annuler
@@ -575,11 +658,36 @@
             <!-- DOSSIER MEMES -->
             <section style="margin-bottom: 16px">
                 <h3>Dossier Memes</h3>
-                <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
-                    <input type="text" id="setting-meme-folder" class="input flex-1" readonly placeholder="Documents/MemeDrop/memes (par défaut)">
-                    <button id="btn-choose-meme-folder" class="ghost" style="padding:6px 12px">📂 Parcourir</button>
+                <div
+                    style="
+                        display: flex;
+                        gap: 8px;
+                        align-items: center;
+                        margin-top: 8px;
+                    "
+                >
+                    <input
+                        type="text"
+                        id="setting-meme-folder"
+                        class="input flex-1"
+                        readonly
+                        placeholder="Documents/MemeDrop/memes (par défaut)"
+                    />
+                    <button
+                        id="btn-choose-meme-folder"
+                        class="ghost"
+                        style="padding: 6px 12px"
+                    >
+                        📂 Parcourir
+                    </button>
                 </div>
-                <p style="font-size:11px;color:var(--text-dim);margin-top:4px">
+                <p
+                    style="
+                        font-size: 11px;
+                        color: var(--text-dim);
+                        margin-top: 4px;
+                    "
+                >
                     Les nouveaux memes seront sauvegardés dans ce dossier.
                 </p>
             </section>
@@ -587,11 +695,29 @@
             <!-- EXPORT / IMPORT -->
             <section style="margin-bottom: 16px">
                 <h3>Sauvegarde</h3>
-                <div style="display:flex;gap:8px;margin-top:8px">
-                    <button id="btn-export-config" class="ghost" style="padding:6px 12px">📤 Exporter la config</button>
-                    <button id="btn-import-config" class="ghost" style="padding:6px 12px">📥 Importer la config</button>
+                <div style="display: flex; gap: 8px; margin-top: 8px">
+                    <button
+                        id="btn-export-config"
+                        class="ghost"
+                        style="padding: 6px 12px"
+                    >
+                        📤 Exporter la config
+                    </button>
+                    <button
+                        id="btn-import-config"
+                        class="ghost"
+                        style="padding: 6px 12px"
+                    >
+                        📥 Importer la config
+                    </button>
                 </div>
-                <p style="font-size:11px;color:var(--text-dim);margin-top:4px">
+                <p
+                    style="
+                        font-size: 11px;
+                        color: var(--text-dim);
+                        margin-top: 4px;
+                    "
+                >
                     Exporte/importe tous les réglages, tags, favoris et groupes.
                 </p>
             </section>
@@ -727,7 +853,11 @@
                     <button id="btn-drop-group" class="primary flex-1">
                         Drop
                     </button>
-                    <button id="btn-drop-all" class="danger-btn" style="flex:1;padding:6px">
+                    <button
+                        id="btn-drop-all"
+                        class="danger-btn"
+                        style="flex: 1; padding: 6px"
+                    >
                         📤 Tous
                     </button>
                 </div>
@@ -753,15 +883,61 @@
                 </div>
                 <div class="panel-body">
                     <div class="field">
-                        <label style="display:flex;flex-direction:column;gap:4px">
+                        <label
+                            style="
+                                display: flex;
+                                flex-direction: column;
+                                gap: 4px;
+                            "
+                        >
                             Cibles (Ctrl+clic pour multiples)
-                            <select id="panel-target" class="input" multiple size="4">
-                            </select>
-                            <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
-                                <input type="text" id="panel-target-add" class="input" placeholder="@pseudo" style="flex:1;min-width:100px;padding:4px 8px;font-size:11px">
-                                <button id="btn-add-target" class="ghost" style="padding:4px 8px;font-size:11px">+ Ajouter</button>
-                                <button id="btn-select-all-targets" class="ghost" style="font-size:10px;padding:2px 6px">Tout</button>
-                                <button id="btn-clear-targets" class="ghost" style="font-size:10px;padding:2px 6px">Effacer</button>
+                            <select
+                                id="panel-target"
+                                class="input"
+                                multiple
+                                size="4"
+                            ></select>
+                            <div
+                                style="
+                                    display: flex;
+                                    gap: 4px;
+                                    margin-top: 4px;
+                                    flex-wrap: wrap;
+                                "
+                            >
+                                <input
+                                    type="text"
+                                    id="panel-target-add"
+                                    class="input"
+                                    placeholder="@pseudo"
+                                    style="
+                                        flex: 1;
+                                        min-width: 100px;
+                                        padding: 4px 8px;
+                                        font-size: 11px;
+                                    "
+                                />
+                                <button
+                                    id="btn-add-target"
+                                    class="ghost"
+                                    style="padding: 4px 8px; font-size: 11px"
+                                >
+                                    + Ajouter
+                                </button>
+                                <button
+                                    id="btn-select-all-targets"
+                                    class="ghost"
+                                    style="font-size: 10px; padding: 2px 6px"
+                                >
+                                    Tout
+                                </button>
+                                <button
+                                    id="btn-clear-targets"
+                                    class="ghost"
+                                    style="font-size: 10px; padding: 2px 6px"
+                                >
+                                    Effacer
+                                </button>
                             </div>
                         </label>
                     </div>
@@ -803,15 +979,40 @@
                                 value="4"
                                 style="width: 100%"
                             />
-                            <span id="panel-duration-out" style="font-size:10px;text-align:center;display:block">4s</span>
+                            <span
+                                id="panel-duration-out"
+                                style="
+                                    font-size: 10px;
+                                    text-align: center;
+                                    display: block;
+                                "
+                                >4s</span
+                            >
                         </div>
                     </div>
                     <div class="field" style="margin-top: 8px">
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                            <input type="checkbox" id="panel-rain" /> Mode Pluie (Spam)
+                        <label
+                            style="
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                cursor: pointer;
+                            "
+                        >
+                            <input type="checkbox" id="panel-rain" /> Mode Pluie
+                            (Spam)
                         </label>
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px">
-                            <input type="checkbox" id="panel-local-preview" /> Aperçu local
+                        <label
+                            style="
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                cursor: pointer;
+                                margin-top: 4px;
+                            "
+                        >
+                            <input type="checkbox" id="panel-local-preview" />
+                            Aperçu local
                         </label>
                     </div>
                 </div>
@@ -821,6 +1022,61 @@
                     <button class="primary btn-send" id="btn-send">
                         Envoyer le Drop
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Help Modal -->
+        <div id="help-modal" class="modal hidden">
+            <div class="modal-backdrop" id="help-modal-close"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>⌨️ Raccourcis Clavier</h3>
+                    <div class="modal-close" id="btn-help-close">✕</div>
+                </div>
+                <div class="modal-body">
+                    <table class="shortcuts-table">
+                        <tr>
+                            <td><kbd>Ctrl+V</kbd> / <kbd>Ctrl+Shift+V</kbd></td>
+                            <td>Coller une image depuis le presse-papier</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Ctrl+F</kbd></td>
+                            <td>Focus la barre de recherche</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Ctrl+Shift+X</kbd></td>
+                            <td>Renvoyer le dernier drop</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Ctrl+Shift+C</kbd></td>
+                            <td>Capture d'écran</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Ctrl+Shift+M</kbd></td>
+                            <td>Ouvrir les DevTools de l'overlay</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Clic droit</kbd> sur un audio</td>
+                            <td>Jouer l'audio localement</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Double-clic</kbd> sur le nom</td>
+                            <td>Renommer le meme</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Ctrl+clic</kbd> / <kbd>⌘+clic</kbd></td>
+                            <td>Sélection multiple de memes</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Suppr</kbd> / <kbd>Backspace</kbd></td>
+                            <td>Supprimer (cacher) les memes sélectionnés</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Échap</kbd></td>
+                            <td>Fermer le panneau / désélectionner</td>
+                        </tr>
+                    </table>
                 </div>
             </div>
         </div>

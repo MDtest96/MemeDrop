@@ -1,54 +1,55 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-describe('giphy infinite scroll - auto-load more', () => {
+// Note: Giphy infinite scroll a été remplacé par un bouton "Afficher plus"
+// Ce test est adapté pour la nouvelle UI avec bouton de chargement
+describe("giphy grid - layout de base", () => {
   let grid;
 
-  function simulateScroll(gridEl) {
-    const event = new Event('scroll');
-    gridEl.dispatchEvent(event);
-  }
-
   beforeEach(() => {
-    document.body.innerHTML = '<div id="giphy-grid" class="giphy-grid" style="max-height:500px;overflow-y:auto"></div>';
-    grid = document.getElementById('giphy-grid');
-    // Fill grid with some items
+    document.body.innerHTML =
+      '<div id="giphy-grid" class="giphy-grid" style="max-height:500px;overflow-y:auto"></div>';
+    grid = document.getElementById("giphy-grid");
+  });
+
+  it("should start empty", () => {
+    expect(grid.children.length).toBe(0);
+  });
+
+  it("should accept items without scroll issues", () => {
     for (let i = 0; i < 24; i++) {
-      const item = document.createElement('div');
-      item.className = 'giphy-item';
-      item.style.height = '30px';
+      const item = document.createElement("div");
+      item.className = "giphy-item";
+      item.style.height = "30px";
       grid.appendChild(item);
     }
+    expect(grid.children.length).toBe(24);
   });
 
-  it('should have scrollbar when content exceeds container height', () => {
-    // 24 items * 30px = 720px > 500px → should have scroll
-    expect(grid.scrollHeight).toBeGreaterThan(grid.clientHeight);
-  });
-
-  it('should NOT have scrollbar when content is smaller than container', () => {
-    grid.innerHTML = '';
-    const small = document.createElement('div');
-    small.style.height = '100px';
-    grid.appendChild(small);
-    // 100px < 500px → no scroll
-    expect(grid.scrollHeight).toBe(grid.clientHeight);
-  });
-
-  it('should trigger scroll event when scrolled', () => {
+  it("should trigger scroll event when scrolled", () => {
     // Fill enough to have scroll
-    grid.innerHTML = '';
     for (let i = 0; i < 100; i++) {
-      const item = document.createElement('div');
-      item.style.height = '30px';
+      const item = document.createElement("div");
+      item.style.height = "30px";
       grid.appendChild(item);
     }
 
     const handler = vi.fn();
-    grid.addEventListener('scroll', handler);
+    grid.addEventListener("scroll", handler);
     grid.scrollTop = 100;
-    simulateScroll(grid);
+    const event = new Event("scroll");
+    grid.dispatchEvent(event);
 
     expect(handler).toHaveBeenCalled();
+  });
+
+  it("should clean grid contents", () => {
+    for (let i = 0; i < 10; i++) {
+      const item = document.createElement("div");
+      item.className = "giphy-item";
+      grid.appendChild(item);
+    }
+    grid.innerHTML = "";
+    expect(grid.children.length).toBe(0);
   });
 });

@@ -85,6 +85,8 @@ contextBridge.exposeInMainWorld("memedrop", {
   buildCollage: (filePaths) => ipcRenderer.invoke("collage:build", filePaths),
   resolveUrl: (url) => ipcRenderer.invoke("url:resolve", url),
   deleteMemes: (paths) => ipcRenderer.invoke("memes:delete", paths),
+  restoreMeme: (path) => ipcRenderer.invoke("memes:restore", path),
+  listHiddenMemes: () => ipcRenderer.invoke("memes:listHidden"),
   renameMeme: (oldPath, newName) =>
     ipcRenderer.invoke("memes:rename", oldPath, newName),
   selectFolder: () => ipcRenderer.invoke("dialog:selectFolder"),
@@ -94,6 +96,12 @@ contextBridge.exposeInMainWorld("memedrop", {
   getCachedUsers: () => ipcRenderer.invoke("users:getCached"),
   exportConfig: () => ipcRenderer.invoke("tools:exportConfig"),
   importConfig: (data) => ipcRenderer.invoke("tools:importConfig", data),
+  syncMeme: (data) => ipcRenderer.invoke("memes:sync", data),
+  onMemeSynced: (callback) => {
+    const fn = (_e, meme) => callback(meme);
+    ipcRenderer.on("meme:synced", fn);
+    return () => ipcRenderer.off("meme:synced", fn);
+  },
 
   // Settings & Updater
   getVersion: () => ipcRenderer.invoke("app:get-version"),

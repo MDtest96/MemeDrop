@@ -1,6 +1,7 @@
 const Store = require("electron-store");
 
-const DEFAULT_SERVER = process.env.DEFAULT_SERVER || "wss://memedrop-bot-production.up.railway.app";
+const DEFAULT_SERVER =
+  process.env.DEFAULT_SERVER || "wss://memedrop-bot-production.up.railway.app";
 
 const store = new Store({
   defaults: {
@@ -31,7 +32,15 @@ const store = new Store({
     memeFolderPath: null,
     favorites: [],
     tags: {},
-    groups: []
+    groups: [],
+    hiddenMemes: [],
+    triageState: {
+      typeFilters: [],
+      tag: null,
+      favFilter: "all",
+      sort: "name",
+      query: "",
+    },
   },
 });
 

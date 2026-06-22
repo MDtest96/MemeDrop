@@ -19,33 +19,86 @@ async function deleteMemes(paths, fileSystem, winRef) {
     }
   }
   for (const w of _BrowserWindow.getAllWindows()) {
-    if (!w.isDestroyed()) w.webContents.send('library:changed');
+    if (!w.isDestroyed()) w.webContents.send("library:changed");
   }
   return results;
 }
 
 function setupMemes(store, app) {
   const memeFolder = () => getMemeFolder(store, app);
-  const validExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp4', '.webm', '.mp3', '.wav', '.ogg'];
+  const validExts = [
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".mp4",
+    ".webm",
+    ".mp3",
+    ".wav",
+    ".ogg",
+  ];
   const kindMap = {};
-  for (const e of ['.mp4', '.webm']) kindMap[e] = 'video';
-  for (const e of ['.mp3', '.wav', '.ogg']) kindMap[e] = 'audio';
-  kindMap['.gif'] = 'gif';
+  for (const e of [".mp4", ".webm"]) kindMap[e] = "video";
+  for (const e of [".mp3", ".wav", ".ogg"]) kindMap[e] = "audio";
+  kindMap[".gif"] = "gif";
 
+  // ── Soft-delete: cache un meme pour l'utilisateur courant ──────────────
   ipcMain.handle("memes:delete", async (_e, paths) => {
-    return await deleteMemes(paths, fs, BrowserWindow);
+    if (!Array.isArray(paths)) paths = [paths];
+    const hidden = new Set(store.get("hiddenMemes") || []);
+    const results = [];
+    for (const filePath of paths) {
+      hidden.add(filePath);
+      results.push({ path: filePath, ok: true });
+    }
+    store.set("hiddenMemes", Array.from(hidden));
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send("library:changed");
+    }
+    return results;
   });
 
   ipcMain.handle("memes:list", () => {
     const folder = memeFolder();
     if (!fs.existsSync(folder)) return [];
-    return fs.readdirSync(folder)
-      .filter(f => validExts.includes(path.extname(f).toLowerCase()))
-      .map(f => ({
+    const hidden = new Set(store.get("hiddenMemes") || []);
+    return fs
+      .readdirSync(folder)
+      .filter((f) => validExts.includes(path.extname(f).toLowerCase()))
+      .map((f) => ({
         name: path.parse(f).name,
         path: path.join(folder, f),
-        kind: kindMap[path.extname(f).toLowerCase()] || 'image'
-      }));
+        kind: kindMap[path.extname(f).toLowerCase()] || "image",
+      }))
+      .filter((m) => !hidden.has(m.path));
+  });
+
+  // ── Restaure un meme caché ──────────────────────────────────────────────
+  ipcMain.handle("memes:restore", async (_e, filePath) => {
+    const hidden = new Set(store.get("hiddenMemes") || []);
+    hidden.delete(filePath);
+    store.set("hiddenMemes", Array.from(hidden));
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send("library:changed");
+    }
+    return { ok: true };
+  });
+
+  // ── Liste les memes cachés avec leurs métadonnées ───────────────────────
+  ipcMain.handle("memes:listHidden", () => {
+    const folder = memeFolder();
+    const hidden = new Set(store.get("hiddenMemes") || []);
+    if (!fs.existsSync(folder)) return [];
+    return fs
+      .readdirSync(folder)
+      .filter((f) => validExts.includes(path.extname(f).toLowerCase()))
+      .map((f) => ({
+        name: path.parse(f).name,
+        path: path.join(folder, f),
+        kind: kindMap[path.extname(f).toLowerCase()] || "image",
+      }))
+      .filter((m) => hidden.has(m.path));
   });
 
   ipcMain.handle("memes:sort", () => {});
@@ -61,7 +114,7 @@ function setupMemes(store, app) {
     return {
       name: path.parse(newName).name,
       path: destPath,
-      kind: kindMap[ext] || 'image'
+      kind: kindMap[ext] || "image",
     };
   });
 
@@ -70,22 +123,29 @@ function setupMemes(store, app) {
     let ext = path.extname(name).toLowerCase();
     if (!ext && type) {
       const mimeMap = {
-        'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif',
-        'image/webp': '.webp', 'video/mp4': '.mp4', 'video/webm': '.webm',
-        'audio/mpeg': '.mp3', 'audio/mp3': '.mp3', 'audio/wav': '.wav', 'audio/ogg': '.ogg'
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/gif": ".gif",
+        "image/webp": ".webp",
+        "video/mp4": ".mp4",
+        "video/webm": ".webm",
+        "audio/mpeg": ".mp3",
+        "audio/mp3": ".mp3",
+        "audio/wav": ".wav",
+        "audio/ogg": ".ogg",
       };
-      ext = mimeMap[type] || '.png';
+      ext = mimeMap[type] || ".png";
     }
-    if (!ext) ext = '.png';
+    if (!ext) ext = ".png";
     if (!validExts.includes(ext)) return null;
-    const baseName = path.parse(name || 'pasted').name;
+    const baseName = path.parse(name || "pasted").name;
     const newName = `${baseName}_${Date.now()}${ext}`;
     const destPath = path.join(folder, newName);
     fs.writeFileSync(destPath, Buffer.from(buffer));
     return {
       name: path.parse(newName).name,
       path: destPath,
-      kind: kindMap[ext] || 'image'
+      kind: kindMap[ext] || "image",
     };
   });
 
@@ -103,13 +163,31 @@ function setupMemes(store, app) {
       const filePath = clipboard.read("FileName");
       if (filePath) {
         const ext = path.extname(filePath).toLowerCase();
-        const validExts = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".webm", ".mp3", ".wav", ".ogg"];
+        const validExts = [
+          ".png",
+          ".jpg",
+          ".jpeg",
+          ".gif",
+          ".webp",
+          ".mp4",
+          ".webm",
+          ".mp3",
+          ".wav",
+          ".ogg",
+        ];
         if (validExts.includes(ext)) {
           const folder = memeFolder();
           const newName = `clipboard_${Date.now()}${ext}`;
           const destPath = path.join(folder, newName);
           fs.copyFileSync(filePath, destPath);
-          const kind = ext === ".gif" ? "gif" : [".mp4", ".webm"].includes(ext) ? "video" : [".mp3", ".wav", ".ogg"].includes(ext) ? "audio" : "image";
+          const kind =
+            ext === ".gif"
+              ? "gif"
+              : [".mp4", ".webm"].includes(ext)
+                ? "video"
+                : [".mp3", ".wav", ".ogg"].includes(ext)
+                  ? "audio"
+                  : "image";
           return { name: path.parse(newName).name, path: destPath, kind };
         }
       }
@@ -140,7 +218,8 @@ function setupMemes(store, app) {
   ipcMain.handle("collage:build", async (_e, filePaths) => {
     try {
       const result = await buildCollage(filePaths);
-      if (!result) return { ok: false, error: "Pas assez d'images valides (minimum 2)" };
+      if (!result)
+        return { ok: false, error: "Pas assez d'images valides (minimum 2)" };
       return { ok: true, ...result };
     } catch (e) {
       return { ok: false, error: e.message };

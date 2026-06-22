@@ -491,6 +491,13 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
   let el;
   let isVideo = false;
 
+  // Si une musique d'accompagnement est fournie pour une vidéo,
+  // on mute la vidéo et la musique remplace le son original.
+  let initialVideoVol = settings?.volume ?? 0.75;
+  if (music?.url && media.kind === 'video') {
+    initialVideoVol = 0;
+  }
+
   if (media.kind === 'video') {
     isVideo = true;
     el = document.createElement('video');
@@ -501,7 +508,6 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
     // element may refuse to honor the volume property until certain events
     // have fired. We apply it both before the source loads and again on
     // every "ready to play" event to be bulletproof.
-    const initialVideoVol = settings?.volume ?? 0.75;
     applyVolume(el, initialVideoVol);
     el.playsInline = true;
     el.loop = false;
@@ -572,11 +578,13 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
 
   if (settings?.soundOnArrival) playPop(settings.volume);
 
-  // ── Musique accompagnant une image/GIF ──────────────────────────────
+  // ── Musique accompagnant une image/GIF/vidéo ────────────────────────
   // Quand le payload contient un champ `music`, on joue l'audio en même
-  // temps que l'image. Le volume suit le curseur "Volume musique".
+  // temps que le média visuel. Pour une vidéo, la musique remplace le son
+  // original (la vidéo est jouée en mute). Le volume suit le curseur
+  // "Volume musique".
   let musicAudio = null;
-  if (music?.url && (media.kind === 'image' || media.kind === 'gif')) {
+  if (music?.url && (media.kind === 'image' || media.kind === 'gif' || media.kind === 'video')) {
     musicAudio = document.createElement('audio');
     musicAudio.src = music.url;
     const musicVol = settings?.musicVolume ?? settings?.volume ?? 0.75;
