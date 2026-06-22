@@ -525,6 +525,16 @@ function connectWS() {
             const destPath = path.join(memeFolder, filename);
             fs.writeFileSync(destPath, Buffer.from(data.buffer, "base64"));
 
+            // Ajouter le tag "importé" au fichier importé
+            try {
+              const allTags = store.get("tags") || {};
+              if (!allTags[destPath]) allTags[destPath] = [];
+              if (!allTags[destPath].includes("importé")) allTags[destPath].push("importé");
+              store.set("tags", allTags);
+            } catch (e) {
+              console.error("[ws] failed to tag imported meme:", e.message);
+            }
+
             // Notifier les fenêtres du nouveau meme
             for (const w of BrowserWindow.getAllWindows()) {
               if (!w.isDestroyed()) {

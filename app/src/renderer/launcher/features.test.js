@@ -886,4 +886,42 @@ describe("full library sync", function() {
 
     expect(hiddenNames).toEqual(["cat.gif", "dog.png"]);
   });
+
+  it("should add 'import\u00e9' tag to synced memes", function() {
+    var tags = {};
+    var destPath = "/memes/shared_123_cat.gif";
+
+    // Simule l'ajout du tag dans le handler meme_sync
+    if (!tags[destPath]) tags[destPath] = [];
+    if (!tags[destPath].includes("import\u00e9")) tags[destPath].push("import\u00e9");
+
+    expect(tags[destPath]).toContain("import\u00e9");
+  });
+
+  it("should filter memes by 'import\u00e9' tag in triage", function() {
+    var allMemes = [
+      { name: "cat", path: "/memes/shared_1_cat.gif", kind: "gif", tags: ["import\u00e9"] },
+      { name: "dog", path: "/memes/dog.png", kind: "image", tags: [] },
+      { name: "bird", path: "/memes/shared_2_bird.gif", kind: "gif", tags: ["import\u00e9"] },
+    ];
+
+    var imported = allMemes.filter(function(m) { return m.tags && m.tags.includes("import\u00e9"); });
+    expect(imported.length).toBe(2);
+    expect(imported[0].name).toBe("cat");
+    expect(imported[1].name).toBe("bird");
+
+    var local = allMemes.filter(function(m) { return !m.tags || !m.tags.includes("import\u00e9"); });
+    expect(local.length).toBe(1);
+    expect(local[0].name).toBe("dog");
+  });
+
+  it("should keep existing tags when adding 'import\u00e9'", function() {
+    var tags = {};
+    var destPath = "/memes/shared_123_cat.gif";
+    tags[destPath] = ["funny"];
+
+    if (!tags[destPath].includes("import\u00e9")) tags[destPath].push("import\u00e9");
+
+    expect(tags[destPath]).toEqual(["funny", "import\u00e9"]);
+  });
 });
