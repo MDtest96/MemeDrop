@@ -508,12 +508,9 @@ function connectWS() {
           console.log("[ws] meme_sync received:", data.name, "from", msg.from?.username || "unknown");
 
           // Vérifier si le meme a été préalablement supprimé (par nom)
-          const hiddenNames = new Set(store.get("hiddenMemeNames") || []);
-          if (hiddenNames.has(path.basename(data.name))) {
-            console.log("[ws] meme_sync skipped (previously hidden):", data.name);
-            break;
-          }
-
+          // Note: on ne bloque PAS l'import ici, le filtrage se fait dans memes:list
+          // qui compare les chemins complets. Les shared_* ont un chemin différent
+          // donc ils ne seront pas filtrés.
           const memeFolder = getMemeFolder(store, app);
           if (!fs.existsSync(memeFolder))
             fs.mkdirSync(memeFolder, { recursive: true });

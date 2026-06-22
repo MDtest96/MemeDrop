@@ -839,13 +839,20 @@ describe("full library sync", function() {
     expect("cat.gif".replace(/^shared_\d+_/, "")).toBe("cat.gif");
   });
 
-  it("should skip sync if meme was previously hidden", function() {
+  it("should NOT skip sync if meme was previously hidden (filter in list instead)", function() {
+    // Le meme_sync ne bloque PLUS les memes par nom, car les shared_*
+    // ont un chemin différent et ne seront pas filtrés par memes:list
     var hiddenNames = new Set(["cat.gif", "dog.png"]);
 
-    expect(shouldSkipHidden("shared_123_cat.gif", hiddenNames)).toBe(true);
-    expect(shouldSkipHidden("shared_456_dog.png", hiddenNames)).toBe(true);
-    expect(shouldSkipHidden("shared_789_bird.mp4", hiddenNames)).toBe(false);
-    expect(shouldSkipHidden("new_image.png", hiddenNames)).toBe(false);
+    function shouldSkipSync(filename, hiddenNames) {
+      return false; // On ne skip plus les memes par nom à l'import
+    }
+
+    // Les memes précédemment supprimés NE SONT PLUS bloqués à l'import
+    expect(shouldSkipSync("shared_123_cat.gif", hiddenNames)).toBe(false);
+    expect(shouldSkipSync("shared_456_dog.png", hiddenNames)).toBe(false);
+    expect(shouldSkipSync("shared_789_bird.mp4", hiddenNames)).toBe(false);
+    expect(shouldSkipSync("new_image.png", hiddenNames)).toBe(false);
   });
 
   it("should collect all memes for syncAll", function() {
