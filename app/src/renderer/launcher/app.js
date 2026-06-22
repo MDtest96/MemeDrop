@@ -2204,19 +2204,31 @@ document.getElementById("btn-clear-targets")?.addEventListener("click", () => {
   if (sel) sel.selectedIndex = -1;
 });
 
-// ── Custom targets ────────────────────────────────────────────────────────
+// ── Custom targets + hidden targets ──────────────────────────────
 let customTargets = new Set();
+let hiddenTargets = new Set();
 try {
   const saved = JSON.parse(
     localStorage.getItem("memedrop_custom_targets") || "[]",
   );
   customTargets = new Set(saved);
+  const hidden = JSON.parse(
+    localStorage.getItem("memedrop_hidden_targets") || "[]",
+  );
+  hiddenTargets = new Set(hidden);
 } catch {}
 
 function saveCustomTargets() {
   localStorage.setItem(
     "memedrop_custom_targets",
     JSON.stringify([...customTargets]),
+  );
+}
+
+function saveHiddenTargets() {
+  localStorage.setItem(
+    "memedrop_hidden_targets",
+    JSON.stringify([...hiddenTargets]),
   );
 }
 
@@ -2249,7 +2261,7 @@ panelTargetAdd?.addEventListener("keydown", (e) => {
   if (e.key === "Enter") addCustomTarget();
 });
 
-// Remove selected custom target
+// Remove selected target (custom, Discord ou recent)
 document.getElementById("btn-remove-target")?.addEventListener("click", () => {
   if (!panelTarget) return;
   const selected = Array.from(panelTarget.selectedOptions).map((o) => o.value.trim());
@@ -2258,19 +2270,19 @@ document.getElementById("btn-remove-target")?.addEventListener("click", () => {
     return;
   }
   for (const val of selected) {
-    // Ne retirer que les cibles personnalisées
+    // Retirer des cibles personnalisées si présent
     if (customTargets.has(val)) {
       customTargets.delete(val);
-      // Retirer l'option du select
-      const opt = Array.from(panelTarget.options).find((o) => o.value === val);
-      if (opt) panelTarget.removeChild(opt);
     }
+    // Ajouter aux cibles masquées (Discord, recent ou custom)
+    hiddenTargets.add(val);
+    // Retirer l'option du select
+    const opt = Array.from(panelTarget.options).find((o) => o.value === val);
+    if (opt) panelTarget.removeChild(opt);
   }
   saveCustomTargets();
-  const count = selected.filter((v) => customTargets.has(v)).length;
-  if (count > 0) {
-    toast(`✕ ${count} cible(s) retirée(s)`);
-  }
+  saveHiddenTargets();
+  toast(`✕ ${selected.length} cible(s) retirée(s)`);
 });
 
 btnSaveGroup?.addEventListener("click", async () => {
@@ -3361,6 +3373,7 @@ async function loadUsers() {
       if (users && users.length > 0) {
         users.forEach((u) => {
           const v = "@" + u.username;
+          if (hiddenTargets.has(v)) return; // Filtrer les masqués
           added.add(v);
           const opt = document.createElement("option");
           opt.value = v;
@@ -3370,7 +3383,7 @@ async function loadUsers() {
       }
       // Recent targets (not already in Discord users)
       for (const rt of recentTargets) {
-        if (!added.has(rt)) {
+        if (!added.has(rt) && !hiddenTargets.has(rt)) {
           added.add(rt);
           const opt = document.createElement("option");
           opt.value = rt;
