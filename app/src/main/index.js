@@ -506,6 +506,14 @@ function connectWS() {
             break;
           }
           console.log("[ws] meme_sync received:", data.name, "from", msg.from?.username || "unknown");
+
+          // Vérifier si le meme a été préalablement supprimé (par nom)
+          const hiddenNames = new Set(store.get("hiddenMemeNames") || []);
+          if (hiddenNames.has(path.basename(data.name))) {
+            console.log("[ws] meme_sync skipped (previously hidden):", data.name);
+            break;
+          }
+
           const memeFolder = getMemeFolder(store, app);
           if (!fs.existsSync(memeFolder))
             fs.mkdirSync(memeFolder, { recursive: true });
@@ -931,6 +939,46 @@ ipcMain.handle("memes:sync", async (_e, memeData) => {
     return { ok: true };
   } catch (err) {
     console.error("[memes:sync] error:", err.message);
+    return { ok: false, error: err.message };
+  }
+});
+
+// ── Sync All: envoie tous les memes locaux aux autres utilisateurs ─────
+ipcMain.handle("memes:syncAll", async () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return { ok: false, error: "Not connected" };
+  }
+  try {
+    const memeFolder = getMemeFolder(store, app);
+    if (!fs.existsSync(memeFolder)) return { ok: true, count: 0 };
+
+    const hidden = new Set(store.get("hiddenMemes") || []);
+    const files = fs.readdirSync(memeFolder);
+    let synced = 0;
+
+    for (const file of files) {
+      const filePath = path.join(memeFolder, file);
+      if (hidden.has(filePath)) continue; // Ne pas partager les memes cachés
+
+      const ext = path.extname(file).toLowerCase();
+      const validExts = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".webm", ".mp3", ".wav", ".ogg"];
+      if (!validExts.includes(ext)) continue;
+
+      const raw = await fs.promises.readFile(filePath);
+      const data = {
+        name: file,
+        kind: ext === ".gif" ? "gif" : [".mp4", ".webm"].includes(ext) ? "video" : [".mp3", ".wav", ".ogg"].includes(ext) ? "audio" : "image",
+        buffer: raw.toString("base64"),
+        mime: getMimeFromExt(ext),
+      };
+      ws.send(JSON.stringify({ type: "meme_sync", data }));
+      synced++;
+    }
+
+    console.log("[memes:syncAll] synced", synced, "memes");
+    return { ok: true, count: synced };
+  } catch (err) {
+    console.error("[memes:syncAll] error:", err.message);
     return { ok: false, error: err.message };
   }
 });

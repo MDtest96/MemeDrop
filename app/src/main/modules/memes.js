@@ -47,12 +47,15 @@ function setupMemes(store, app) {
   ipcMain.handle("memes:delete", async (_e, paths) => {
     if (!Array.isArray(paths)) paths = [paths];
     const hidden = new Set(store.get("hiddenMemes") || []);
+    const hiddenNames = new Set(store.get("hiddenMemeNames") || []);
     const results = [];
     for (const filePath of paths) {
       hidden.add(filePath);
+      hiddenNames.add(path.basename(filePath));
       results.push({ path: filePath, ok: true });
     }
     store.set("hiddenMemes", Array.from(hidden));
+    store.set("hiddenMemeNames", Array.from(hiddenNames));
     for (const w of BrowserWindow.getAllWindows()) {
       if (!w.isDestroyed()) w.webContents.send("library:changed");
     }
@@ -63,6 +66,7 @@ function setupMemes(store, app) {
     const folder = memeFolder();
     if (!fs.existsSync(folder)) return [];
     const hidden = new Set(store.get("hiddenMemes") || []);
+    const hiddenNames = new Set(store.get("hiddenMemeNames") || []);
     return fs
       .readdirSync(folder)
       .filter((f) => validExts.includes(path.extname(f).toLowerCase()))
@@ -71,7 +75,7 @@ function setupMemes(store, app) {
         path: path.join(folder, f),
         kind: kindMap[path.extname(f).toLowerCase()] || "image",
       }))
-      .filter((m) => !hidden.has(m.path));
+      .filter((m) => !hidden.has(m.path) && !hiddenNames.has(path.basename(m.path)));
   });
 
   // ── Restaure un meme caché ──────────────────────────────────────────────

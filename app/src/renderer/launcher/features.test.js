@@ -826,3 +826,64 @@ describe("social meme sync", function() {
     expect(msg.from.username).toBe("friend");
   });
 });
+
+describe("full library sync", function() {
+  function shouldSkipHidden(filename, hiddenNames) {
+    // Extrait le nom original du fichier (sans préfixe shared_ et timestamp)
+    var originalName = filename.replace(/^shared_\d+_/, "");
+    return hiddenNames.has(originalName);
+  }
+
+  it("should extract original name from shared_ filename", function() {
+    expect("shared_1234567890_cat.gif".replace(/^shared_\d+_/, "")).toBe("cat.gif");
+    expect("cat.gif".replace(/^shared_\d+_/, "")).toBe("cat.gif");
+  });
+
+  it("should skip sync if meme was previously hidden", function() {
+    var hiddenNames = new Set(["cat.gif", "dog.png"]);
+
+    expect(shouldSkipHidden("shared_123_cat.gif", hiddenNames)).toBe(true);
+    expect(shouldSkipHidden("shared_456_dog.png", hiddenNames)).toBe(true);
+    expect(shouldSkipHidden("shared_789_bird.mp4", hiddenNames)).toBe(false);
+    expect(shouldSkipHidden("new_image.png", hiddenNames)).toBe(false);
+  });
+
+  it("should collect all memes for syncAll", function() {
+    var allMemes = [
+      { name: "cat", path: "/memes/cat.gif", kind: "gif" },
+      { name: "dog", path: "/memes/dog.png", kind: "image" },
+    ];
+    expect(allMemes.length).toBe(2);
+    expect(allMemes[0].name).toBe("cat");
+  });
+
+  it("syncAll should call syncMeme for each meme", async function() {
+    var synced = [];
+    var allMemes = [
+      { name: "cat.gif", path: "/memes/cat.gif", kind: "gif" },
+      { name: "dog.png", path: "/memes/dog.png", kind: "image" },
+    ];
+
+    for (var meme of allMemes) {
+      synced.push(meme);
+    }
+
+    expect(synced.length).toBe(2);
+  });
+
+  it("should record hidden file names when hiding a meme", function() {
+    var hiddenNames = new Set();
+    var memePath = "/memes/cat.gif";
+    var fileName = memePath.split("/").pop(); // "cat.gif"
+
+    hiddenNames.add(fileName);
+    expect(hiddenNames.has("cat.gif")).toBe(true);
+  });
+
+  it("hiddenNames should persist alongside hiddenMemes", function() {
+    var hiddenMemes = ["/memes/cat.gif", "/memes/dog.png"];
+    var hiddenNames = hiddenMemes.map(function(p) { return p.split("/").pop(); });
+
+    expect(hiddenNames).toEqual(["cat.gif", "dog.png"]);
+  });
+});

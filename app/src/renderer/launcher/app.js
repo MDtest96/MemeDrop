@@ -202,6 +202,12 @@ const unsubConn = window.memedrop.onConnection((state) => {
       pairingDisplay.textContent = state.code || "------";
     } else if (state.status === "linked") {
       pairingDisplay.textContent = `Lié à ${state.user?.username || "inconnu"}`;
+      // Sync complet de la bibliothèque quand on se connecte
+      if (window.memedrop.syncAllMemes) {
+        window.memedrop.syncAllMemes().then(r => {
+          if (r && r.ok) console.log("[sync] Bibliothèque partagée:", r.count, "memes");
+        }).catch(() => {});
+      }
     } else {
       pairingDisplay.textContent = "------";
     }
@@ -755,6 +761,13 @@ document.querySelectorAll(".filter-btn").forEach((btn) => {
 
 // ── Toolbar buttons ─────────────────────────────────────────────────────
 document.getElementById("btn-refresh")?.addEventListener("click", loadMemes);
+document.getElementById("btn-sync-library")?.addEventListener("click", async () => {
+  if (!window.memedrop.syncAllMemes) return toast("Sync non disponible", "error");
+  toast("📤 Synchronisation de la bibliothèque…");
+  const r = await window.memedrop.syncAllMemes();
+  if (r && r.ok) toast(`📤 ${r.count} meme(s) partagé(s)`);
+  else toast("❌ Sync échoué", "error");
+});
 document
   .getElementById("btn-open-folder")
   ?.addEventListener("click", () => window.memedrop.openMemeFolder());

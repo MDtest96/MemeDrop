@@ -34,6 +34,7 @@ const store = new Store({
     tags: {},
     groups: [],
     hiddenMemes: [],
+    hiddenMemeNames: [],
     triageState: {
       typeFilters: [],
       tag: null,
