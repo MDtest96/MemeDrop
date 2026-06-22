@@ -1409,3 +1409,75 @@ input[type="range"]::-webkit-slider-thumb {
     background: var(--accent);
     color: var(--accent-text);
 }
+
+/* ── Blacklist Modal ───────────────────────────────────────── */
+.blacklist-list {
+    max-height: 300px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.blacklist-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    font-size: 12px;
+    gap: 8px;
+}
+.blacklist-item .name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.blacklist-item .restore-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.12s;
+}
+.blacklist-item .restore-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+}
+.blacklist-item .delete-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: transparent;
+    color: #ff5e8a;
+    cursor: pointer;
+    transition: all 0.12s;
+}
+.blacklist-item .delete-btn:hover {
+    background: rgba(255,94,138,0.1);
+    border-color: #ff5e8a;
+}
+.blacklist-empty {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    padding: 24px;
+}
+.danger-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    border: 1px solid #ff5e8a;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: #ff5e8a;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.danger-btn:hover {
+    background: rgba(255,94,138,0.15);
+}

@@ -97,7 +97,7 @@ contextBridge.exposeInMainWorld("memedrop", {
   exportConfig: () => ipcRenderer.invoke("tools:exportConfig"),
   importConfig: (data) => ipcRenderer.invoke("tools:importConfig", data),
   syncMeme: (data) => ipcRenderer.invoke("memes:sync", data),
-  syncAllMemes: () => ipcRenderer.invoke("memes:syncAll"),
+  syncAllMemes: (force) => ipcRenderer.invoke("memes:syncAll", force),
   onMemeSynced: (callback) => {
     const fn = (_e, meme) => callback(meme);
     ipcRenderer.on("meme:synced", fn);

@@ -1097,3 +1097,70 @@ describe("full library sync", function() {
     expect(runCount).toBe(1);
   });
 });
+
+describe("hidden memes management (blacklist)", function() {
+  beforeEach(function() {
+    localStorage.clear();
+    window.hiddenMemeNames = new Set();
+    window.hiddenMemes = [];
+  });
+
+  function hideMeme(path) {
+    window.hiddenMemes.push(path);
+    var name = path.split("/").pop();
+    window.hiddenMemeNames.add(name);
+  }
+
+  function restoreMeme(path) {
+    window.hiddenMemes = window.hiddenMemes.filter(function(p) { return p !== path; });
+    var name = path.split("/").pop();
+    window.hiddenMemeNames.delete(name);
+  }
+
+  function restoreAll() {
+    window.hiddenMemes = [];
+    window.hiddenMemeNames.clear();
+  }
+
+  it("should list all hidden memes with names", function() {
+    hideMeme("/memes/cat.gif");
+    hideMeme("/memes/dog.png");
+
+    var list = window.hiddenMemes.map(function(p) { return {
+      path: p,
+      name: p.split("/").pop()
+    };});
+
+    expect(list.length).toBe(2);
+    expect(list[0].name).toBe("cat.gif");
+    expect(list[1].name).toBe("dog.png");
+  });
+
+  it("should restore a single meme from blacklist", function() {
+    hideMeme("/memes/cat.gif");
+    hideMeme("/memes/dog.png");
+    expect(window.hiddenMemes.length).toBe(2);
+
+    restoreMeme("/memes/cat.gif");
+    expect(window.hiddenMemes).toEqual(["/memes/dog.png"]);
+    expect(window.hiddenMemeNames.has("cat.gif")).toBe(false);
+    expect(window.hiddenMemeNames.has("dog.png")).toBe(true);
+  });
+
+  it("should clear all hidden memes", function() {
+    hideMeme("/memes/cat.gif");
+    hideMeme("/memes/dog.png");
+    expect(window.hiddenMemes.length).toBe(2);
+
+    restoreAll();
+    expect(window.hiddenMemes).toEqual([]);
+    expect(window.hiddenMemeNames.size).toBe(0);
+  });
+
+  it("should show empty list when no hidden memes", function() {
+    var list = window.hiddenMemes.map(function(p) { return {
+      name: p.split("/").pop()
+    };});
+    expect(list.length).toBe(0);
+  });
+});

@@ -117,10 +117,10 @@
                 <div class="tb-sep"></div>
                 <button
                     class="tb-btn"
-                    id="btn-restore-hidden"
-                    title="Restaurer les memes cachés"
+                    id="btn-blacklist"
+                    title="Gérer la blacklist (memes cachés)"
                 >
-                    ♻️ Restaurer
+                    🚫 Blacklist
                 </button>
                 <div class="tb-sep"></div>
                 <button
@@ -1087,6 +1087,27 @@
                             <td>Fermer le panneau / désélectionner</td>
                         </tr>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Blacklist Modal -->
+        <div id="blacklist-modal" class="modal hidden">
+            <div class="modal-backdrop" id="blacklist-modal-close"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>🚫 Blacklist (memes cachés)</h3>
+                    <div class="modal-close" id="btn-blacklist-close">✕</div>
+                </div>
+                <div class="modal-body">
+                    <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px">
+                        Les memes blacklistés ne sont pas visibles dans ta grille et ne seront pas réimportés par le sync.
+                    </p>
+                    <div id="blacklist-list" class="blacklist-list"></div>
+                    <div style="display:flex;gap:8px;margin-top:12px">
+                        <button id="btn-blacklist-restore-all" class="primary" style="flex:1">♻️ Tout restaurer</button>
+                        <button id="btn-blacklist-clear-all" class="danger-btn" style="flex:1">🗑️ Vider la blacklist</button>
+                    </div>
                 </div>
             </div>
         </div>

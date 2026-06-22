@@ -967,8 +967,8 @@ ipcMain.handle("memes:sync", async (_e, memeData) => {
 // ── Sync All: envoie tous les memes locaux aux autres utilisateurs ─────
 let _syncAllHasRun = false;
 
-ipcMain.handle("memes:syncAll", async () => {
-  if (_syncAllHasRun) {
+ipcMain.handle("memes:syncAll", async (_e, force) => {
+  if (!force && _syncAllHasRun) {
     console.log("[memes:syncAll] already synced this session, skipping");
     return { ok: true, count: 0, skipped: true };
   }

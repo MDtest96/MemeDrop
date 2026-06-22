@@ -765,7 +765,7 @@ document.getElementById("btn-refresh")?.addEventListener("click", loadMemes);
 document.getElementById("btn-sync-library")?.addEventListener("click", async () => {
   if (!window.memedrop.syncAllMemes) return toast("Sync non disponible", "error");
   toast("📤 Synchronisation de la bibliothèque…");
-  const r = await window.memedrop.syncAllMemes();
+  const r = await window.memedrop.syncAllMemes(true);
   if (r && r.ok) toast(`📤 ${r.count} meme(s) partagé(s)`);
   else toast("❌ Sync échoué", "error");
 });
@@ -803,32 +803,107 @@ document
   });
 
 document
-  .getElementById("btn-restore-hidden")
+  .getElementById("btn-blacklist")
   ?.addEventListener("click", async () => {
-    try {
-      const hidden = await window.memedrop.listHiddenMemes();
-      if (!hidden || hidden.length === 0) {
-        toast("\uD83D\uDD04 Aucun meme cach\u00E9 \u00E0 restaurer", "");
-        return;
-      }
-      const list = hidden.map((m, i) => `${i + 1}. ${m.name}`).join("\n");
-      if (
-        confirm(
-          `Restaurer tous les ${hidden.length} memes cach\u00E9s ?\n\n${list}`,
-        )
-      ) {
-        for (const m of hidden) {
-          await window.memedrop.restoreMeme(m.path);
-        }
-        await loadMemes();
-        toast(
-          `\uD83D\uDD04 ${hidden.length} meme${hidden.length > 1 ? "s" : ""} restaur\u00E9${hidden.length > 1 ? "s" : ""} !`,
-        );
-      }
-    } catch (e) {
-      console.warn("Failed to list/restore hidden memes", e);
-    }
+    await openBlacklistModal();
   });
+
+async function openBlacklistModal() {
+  const modal = document.getElementById("blacklist-modal");
+  if (!modal) return;
+
+  const hidden = await window.memedrop.listHiddenMemes();
+  const listEl = document.getElementById("blacklist-list");
+  if (!listEl) return;
+
+  modal.classList.remove("hidden");
+
+  if (!hidden || hidden.length === 0) {
+    listEl.innerHTML = '<div class="blacklist-empty">✅ Aucun meme dans la blacklist</div>';
+    return;
+  }
+
+  listEl.innerHTML = "";
+  for (const meme of hidden) {
+    const item = document.createElement("div");
+    item.className = "blacklist-item";
+
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = meme.name;
+
+    const restoreBtn = document.createElement("button");
+    restoreBtn.className = "restore-btn";
+    restoreBtn.textContent = "♻️";
+    restoreBtn.title = "Restaurer ce meme";
+    restoreBtn.addEventListener("click", async () => {
+      await window.memedrop.restoreMeme(meme.path);
+      await openBlacklistModal(); // Refresh
+      await loadMemes();
+      toast(`♻️ "${meme.name}" restauré`);
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "delete-btn";
+    deleteBtn.textContent = "✕";
+    deleteBtn.title = "Supprimer définitivement de la blacklist";
+    deleteBtn.addEventListener("click", async () => {
+      await window.memedrop.restoreMeme(meme.path);
+      // Aussi supprimer le fichier si il existe encore
+      await openBlacklistModal(); // Refresh
+      toast(`🗑️ "${meme.name}" retiré de la blacklist`);
+    });
+
+    item.appendChild(name);
+    item.appendChild(restoreBtn);
+    item.appendChild(deleteBtn);
+    listEl.appendChild(item);
+  }
+}
+
+// Fermeture blacklist modal
+document.getElementById("btn-blacklist-close")?.addEventListener("click", () => {
+  document.getElementById("blacklist-modal")?.classList.add("hidden");
+});
+document.getElementById("blacklist-modal-close")?.addEventListener("click", () => {
+  document.getElementById("blacklist-modal")?.classList.add("hidden");
+});
+
+// Restaurer tout
+document.getElementById("btn-blacklist-restore-all")?.addEventListener("click", async () => {
+  const hidden = await window.memedrop.listHiddenMemes();
+  if (!hidden || hidden.length === 0) return;
+  for (const m of hidden) {
+    await window.memedrop.restoreMeme(m.path);
+  }
+  await loadMemes();
+  document.getElementById("blacklist-modal")?.classList.add("hidden");
+  toast(`♻️ ${hidden.length} meme(s) restauré(s)`);
+});
+
+// Vider toute la blacklist (supprime définitivement)
+document.getElementById("btn-blacklist-clear-all")?.addEventListener("click", async () => {
+  const hidden = await window.memedrop.listHiddenMemes();
+  if (!hidden || hidden.length === 0) return;
+  if (!confirm(`Supprimer définitivement les ${hidden.length} fichier(s) de la blacklist ?`)) return;
+  for (const m of hidden) {
+    await window.memedrop.restoreMeme(m.path);
+  }
+  await loadMemes();
+  document.getElementById("blacklist-modal")?.classList.add("hidden");
+  toast(`🗑️ ${hidden.length} meme(s) retiré(s) de la blacklist`);
+});
+
+// Escape key pour fermer la blacklist
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    const modal = document.getElementById("blacklist-modal");
+    if (modal && !modal.classList.contains("hidden")) {
+      modal.classList.add("hidden");
+      e.preventDefault();
+    }
+  }
+});
 
 // ── Section P: Side panel toggle ───────────────────────────────────────
 document.getElementById("btn-side-panel")?.addEventListener("click", () => {
