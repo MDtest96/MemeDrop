@@ -804,6 +804,9 @@ if (!gotLock) {
     createTray();
     connectWS();
 
+    // Nettoyer les doublons shared_* au démarrage
+    cleanupDuplicateSharedMemes();
+
     // Debug shortcuts — work even when the overlay (which is non-focusable)
     // can't receive keyboard events normally. We use Ctrl+Alt+X combos so we
     // don't collide with GPU monitor overlays (NZXT CAM, MSI Afterburner, etc.)
@@ -1006,6 +1009,54 @@ ipcMain.handle("memes:syncAll", async () => {
     return { ok: false, error: err.message };
   }
 });
+
+// ── Cleanup: supprime les doublons shared_* (garder le plus récent) ───
+function cleanupDuplicateSharedMemes() {
+  try {
+    const memeFolder = getMemeFolder(store, app);
+    if (!fs.existsSync(memeFolder)) return;
+
+    const files = fs.readdirSync(memeFolder);
+    const byName = {}; // originalName -> [{file, path, mtime}]
+
+    for (const file of files) {
+      const match = file.match(/^shared_(\d+)_(.+)$/);
+      if (!match) continue;
+      const ts = parseInt(match[1], 10);
+      const originalName = match[2];
+
+      if (!byName[originalName]) byName[originalName] = [];
+      byName[originalName].push({
+        file,
+        path: path.join(memeFolder, file),
+        ts,
+      });
+    }
+
+    let removed = 0;
+    for (const [orig, entries] of Object.entries(byName)) {
+      if (entries.length <= 1) continue; // Pas de doublon
+
+      // Trier par timestamp décroissant (plus récent d'abord)
+      entries.sort((a, b) => b.ts - a.ts);
+
+      // Garder le plus récent, supprimer les autres
+      for (let i = 1; i < entries.length; i++) {
+        try {
+          fs.unlinkSync(entries[i].path);
+          removed++;
+          console.log("[cleanup] removed duplicate:", entries[i].file);
+        } catch (e) {
+          console.error("[cleanup] failed to remove", entries[i].file, e.message);
+        }
+      }
+    }
+
+    if (removed > 0) console.log("[cleanup] removed", removed, "duplicate shared memes");
+  } catch (err) {
+    console.error("[cleanup] error:", err.message);
+  }
+}
 
 // Collage and URL resolvers are handled by memes module
 ipcMain.handle("drop:sendUrl", async (_e, payload) => {
