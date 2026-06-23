@@ -531,16 +531,30 @@ function connectWS() {
           if (data.buffer) {
             // Fichier envoyé en base64 → sauvegarder localement
             const safeName = path.basename(data.name).replace(/[^a-zA-Z0-9._-]/g, "_");
-            if (safeName === "_" || safeName === ".") break; // Nom vide après sanitization
-            const filename = `shared_${Date.now()}_${safeName}`;
-            const destPath = path.join(memeFolder, filename);
+            if (safeName === "_" || safeName === ".") break;
+            // Nom simplifié : shared_ + nom original (sans timestamp pour lisibilité)
+            let filename = "shared_" + safeName;
+            let destPath = path.join(memeFolder, filename);
+            // Gérer les collisions : ajouter un suffixe _2, _3...
+            let counter = 2;
+            while (fs.existsSync(destPath)) {
+              const dot = safeName.lastIndexOf(".");
+              const base = dot >= 0 ? safeName.substring(0, dot) : safeName;
+              const ext = dot >= 0 ? safeName.substring(dot) : "";
+              filename = "shared_" + base + "_" + counter + ext;
+              destPath = path.join(memeFolder, filename);
+              counter++;
+            }
 
             // Vérifier si ce meme a déjà été importé (par nom original)
             const existingFiles = fs.readdirSync(memeFolder);
-            const isDuplicate = existingFiles.some(function(f) {
-              return f.startsWith("shared_") && f.replace(/^shared_\d+_/, "") === safeName;
-            });
-            if (isDuplicate) {
+            const existingNames = new Set(
+              existingFiles
+                .filter(f => f.startsWith("shared_"))
+                .map(f => f.substring(7).replace(/_(\d+)(\.\w+)$/, "$2")) // retire _2, _3 avant l'extension
+            );
+            const displayName = safeName.replace(/_(\d+)(\.\w+)$/, "$2");
+            if (existingNames.has(displayName)) {
               console.log("[ws] meme_sync skipped (already imported):", safeName);
               break;
             }

@@ -1484,8 +1484,17 @@ const panelDuration = document.getElementById("panel-duration");
 const panelDurationOut = document.getElementById("panel-duration-out");
 panelDuration?.addEventListener("input", () => {
   currentDuration = parseInt(panelDuration.value, 10) || 4;
-  if (panelDurationOut) panelDurationOut.textContent = `${currentDuration}s`;
+  if (panelDurationOut) panelDurationOut.textContent = currentDuration + "s";
 });
+
+// Sync audio checkbox → désactiver le slider durée
+const syncAudioCb = document.getElementById("panel-sync-audio-duration");
+if (syncAudioCb && panelDuration && panelDurationOut) {
+  syncAudioCb.addEventListener("change", function() {
+    panelDuration.disabled = this.checked;
+    panelDurationOut.textContent = this.checked ? "60s (sync)" : currentDuration + "s";
+  });
+}
 
 // ── Section H: History ─────────────────────────────────────────────────
 async function loadHistory() {

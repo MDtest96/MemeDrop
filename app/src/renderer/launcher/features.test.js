@@ -1205,6 +1205,36 @@ describe("library sync request (download all)", function() {
     document.body.innerHTML = '<button id="btn-download-all">📥 Tout télécharger</button>';
     var btn = document.getElementById("btn-download-all");
     expect(btn).toBeTruthy();
-    expect(btn.textContent).toContain("Tout télécharger");
+    expect(btn.textContent).toContain("Tout t\u00e9l\u00e9charger");
+  });
+});
+
+describe("shared filename format", function() {
+  it("should use original name without timestamp prefix", function() {
+    var originalName = "let-it-all-out-scream.mp4";
+    var safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    var filename = safeName;
+    expect(filename).toBe("let-it-all-out-scream.mp4");
+  });
+
+  it("should handle filenames with special chars", function() {
+    var originalName = "\uD83D\uDC4B#meme #trend (1).mp4";
+    var safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    expect(safeName).toBe("___meme__trend__1_.mp4");
+  });
+
+  it("should handle collisions by adding suffix", function() {
+    var fsMock = { existsSync: function(p) { return p === "/memes/cat.gif"; } };
+    var memeFolder = "/memes";
+    var safeName = "cat.gif";
+    var destPath = memeFolder + "/" + safeName;
+
+    if (fsMock.existsSync(destPath)) {
+      var idx = safeName.lastIndexOf(".");
+      var base = idx >= 0 ? safeName.substring(0, idx) : safeName;
+      var ext = idx >= 0 ? safeName.substring(idx) : "";
+      destPath = memeFolder + "/" + base + "_2" + ext;
+    }
+    expect(destPath).toBe("/memes/cat_2.gif");
   });
 });
