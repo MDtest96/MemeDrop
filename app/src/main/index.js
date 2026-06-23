@@ -1153,28 +1153,25 @@ function cleanupDuplicateSharedMemes() {
     const byName = {}; // originalName -> [{file, path, mtime}]
 
     for (const file of files) {
-      const match = file.match(/^shared_(\d+)_(.+)$/);
-      if (!match) continue;
-      const ts = parseInt(match[1], 10);
-      const originalName = match[2];
+      // Nouveau format: shared_NOM.ext, Ancien format: shared_TIMESTAMP_NOM.ext
+      var baseName = file.startsWith("shared_") ? file.substring(7) : null;
+      if (!baseName) continue;
+      // Enlever le timestamp pour l'ancien format
+      var originalName = baseName.replace(/^\d+_/, "");
 
       if (!byName[originalName]) byName[originalName] = [];
       byName[originalName].push({
         file,
         path: path.join(memeFolder, file),
-        ts,
       });
     }
 
     let removed = 0;
-    for (const [orig, entries] of Object.entries(byName)) {
-      if (entries.length <= 1) continue; // Pas de doublon
-
-      // Trier par timestamp décroissant (plus récent d'abord)
-      entries.sort((a, b) => b.ts - a.ts);
-
-      // Garder le plus récent, supprimer les autres
-      for (let i = 1; i < entries.length; i++) {
+    for (var orig in byName) {
+      var entries = byName[orig];
+      if (entries.length <= 1) continue;
+      // Garder le premier, supprimer les autres
+      for (var i = 1; i < entries.length; i++) {
         try {
           fs.unlinkSync(entries[i].path);
           removed++;
@@ -1223,30 +1220,28 @@ function sanitizeOldSharedFilenames() {
     const files = fs.readdirSync(memeFolder);
     for (const file of files) {
       if (!file.startsWith("shared_")) continue;
-      // Vérifier si le nom contient des caractères non valides
-      const badChars = /[^a-zA-Z0-9._-]/;
-      if (!badChars.test(file)) continue;
-      // Extraire la partie après shared_
-      const rest = file.substring(7);
-      // Enlever l'éventuel timestamp numérique au début (ancien format)
-      const noTimestamp = rest.replace(/^\d+_/, "");
-      // Sanitizer le nom
-      const sanitized = noTimestamp.replace(badChars, "_");
+      // Extraire la partie apres shared_
+      var rest = file.substring(7);
+      // Enlever l'eventuel timestamp numerique au debut (ancien format)
+      var noTimestamp = rest.replace(/^\d+_/, "");
+      // Sanitizer: remplacer TOUS les caracteres non autorises par _
+      var sanitized = noTimestamp.replace(/[^a-zA-Z0-9._-]/g, "_");
       if (!sanitized || sanitized === "_") continue;
-      const oldPath = path.join(memeFolder, file);
-      const newFilename = "shared_" + sanitized;
-      let newPath = path.join(memeFolder, newFilename);
-      // Gérer les collisions
-      let counter = 2;
+      if (sanitized === noTimestamp) continue; // Deja propre
+      var oldPath = path.join(memeFolder, file);
+      var newFilename = "shared_" + sanitized;
+      var newPath = path.join(memeFolder, newFilename);
+      // Gerer les collisions
+      var counter = 2;
       while (fs.existsSync(newPath)) {
-        const dot = sanitized.lastIndexOf(".");
-        const base = dot >= 0 ? sanitized.substring(0, dot) : sanitized;
-        const ext = dot >= 0 ? sanitized.substring(dot) : "";
+        var dot = sanitized.lastIndexOf(".");
+        var base = dot >= 0 ? sanitized.substring(0, dot) : sanitized;
+        var ext = dot >= 0 ? sanitized.substring(dot) : "";
         newPath = path.join(memeFolder, "shared_" + base + "_" + counter + ext);
         counter++;
       }
       fs.renameSync(oldPath, newPath);
-      console.log("[cleanup] sanitized filename:", file, "→", path.basename(newPath));
+      console.log("[cleanup] sanitized:", file, "->", path.basename(newPath));
     }
   } catch (err) {
     console.error("[cleanup] sanitize error:", err.message);
