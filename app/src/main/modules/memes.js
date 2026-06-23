@@ -157,7 +157,7 @@ function setupMemes(store, app) {
     };
   });
 
-  ipcMain.handle("memes:preview", (e, p) => `file:///${p.replace(/\\/g, "/")}`);
+  ipcMain.handle("memes:preview", (e, p) => `file:///${encodeURI(p.replace(/\\/g, "/"))}`);
 
   ipcMain.handle("memes:openFolder", () => {
     const folder = memeFolder();

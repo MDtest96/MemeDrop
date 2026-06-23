@@ -623,12 +623,14 @@ async function renderGrid() {
           card.appendChild(el);
         } else if (meme.kind === "video" || meme.kind === "gif") {
           // Fallback: utiliser le chemin local directement (Twitter/X, etc.)
-          const fallbackUrl = `file:///${meme.path.replace(/\\/g, "/")}`;
+          const fallbackUrl = `file:///${encodeURI(meme.path.replace(/\\/g, "/"))}`;
           const el =
             meme.kind === "video"
               ? document.createElement("video")
               : document.createElement("img");
           el.src = fallbackUrl;
+          // Supprimer les erreurs de chargement silencieusement
+          el.onerror = function() { this.style.display = "none"; };
           if (meme.kind === "video") {
             el.muted = true;
             el.loop = true;
