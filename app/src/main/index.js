@@ -889,6 +889,8 @@ if (!gotLock) {
     cleanupDuplicateSharedMemes();
     // Migrer les noms des anciens hiddenMemes vers hiddenMemeNames
     migrateHiddenMemeNames();
+    // Renommer les anciens fichiers shared_ avec noms spéciaux
+    sanitizeOldSharedFilenames();
     // Programmateur de mute
     initMuteScheduler();
 
@@ -1210,6 +1212,44 @@ function migrateHiddenMemeNames() {
     }
   } catch (err) {
     console.error("[migrate] hiddenMemeNames error:", err.message);
+  }
+}
+
+// ── Renommer les anciens fichiers shared_ avec noms non sanitizés ─────
+function sanitizeOldSharedFilenames() {
+  try {
+    const memeFolder = getMemeFolder(store, app);
+    if (!fs.existsSync(memeFolder)) return;
+    const files = fs.readdirSync(memeFolder);
+    for (const file of files) {
+      if (!file.startsWith("shared_")) continue;
+      // Vérifier si le nom contient des caractères non valides
+      const badChars = /[^a-zA-Z0-9._-]/;
+      if (!badChars.test(file)) continue;
+      // Extraire la partie après shared_
+      const rest = file.substring(7);
+      // Enlever l'éventuel timestamp numérique au début (ancien format)
+      const noTimestamp = rest.replace(/^\d+_/, "");
+      // Sanitizer le nom
+      const sanitized = noTimestamp.replace(badChars, "_");
+      if (!sanitized || sanitized === "_") continue;
+      const oldPath = path.join(memeFolder, file);
+      const newFilename = "shared_" + sanitized;
+      let newPath = path.join(memeFolder, newFilename);
+      // Gérer les collisions
+      let counter = 2;
+      while (fs.existsSync(newPath)) {
+        const dot = sanitized.lastIndexOf(".");
+        const base = dot >= 0 ? sanitized.substring(0, dot) : sanitized;
+        const ext = dot >= 0 ? sanitized.substring(dot) : "";
+        newPath = path.join(memeFolder, "shared_" + base + "_" + counter + ext);
+        counter++;
+      }
+      fs.renameSync(oldPath, newPath);
+      console.log("[cleanup] sanitized filename:", file, "→", path.basename(newPath));
+    }
+  } catch (err) {
+    console.error("[cleanup] sanitize error:", err.message);
   }
 }
 
