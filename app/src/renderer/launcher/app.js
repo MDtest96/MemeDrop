@@ -952,6 +952,41 @@ async function loadTags() {
 function renderTags() {
   if (!tagList) return;
   tagList.innerHTML = "";
+
+  // Afficher les tags du meme sélectionné (avec ✕ pour supprimer)
+  if (selectedMeme) {
+    const memeTags = selectedMeme.tags || [];
+    if (memeTags.length > 0) {
+      const header = document.createElement("div");
+      header.style.cssText = "font-size:10px;color:var(--text-dim);margin-bottom:4px";
+      header.textContent = "Tags de " + selectedMeme.name + " :";
+      tagList.appendChild(header);
+
+      for (const tag of memeTags) {
+        const pill = document.createElement("span");
+        pill.className = "tag-pill tag-pill-meme";
+        pill.textContent = tag + " ✕";
+        pill.title = "Retirer le tag \"" + tag + "\"";
+        pill.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const currentTags = selectedMeme.tags || [];
+          const updated = currentTags.filter((t) => t !== tag);
+          await window.memedrop.setTags(selectedMeme.path, updated);
+          selectedMeme.tags = updated;
+          await loadTags();
+          renderGrid();
+          toast("🏷️ Tag \"" + tag + "\" retiré");
+        });
+        tagList.appendChild(pill);
+      }
+
+      const sep = document.createElement("div");
+      sep.style.cssText = "height:1px;background:var(--border);margin:8px 0";
+      tagList.appendChild(sep);
+    }
+  }
+
+  // Filtre actif
   if (activeTagFilter) {
     const clear = document.createElement("span");
     clear.className = "tag-pill";
@@ -963,6 +998,8 @@ function renderTags() {
     });
     tagList.appendChild(clear);
   }
+
+  // Tous les tags (filtre global)
   for (const tag of allTags) {
     const pill = document.createElement("span");
     pill.className = "tag-pill" + (activeTagFilter === tag ? " active" : "");
