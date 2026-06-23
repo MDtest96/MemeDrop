@@ -752,6 +752,7 @@ async function renderGrid() {
       e.stopPropagation();
       showContextMenu(meme, e.clientX, e.clientY);
     });
+    if (captionBelow) card.classList.add("caption-below");
     fragment.appendChild(card);
   }
 
@@ -872,6 +873,13 @@ async function openBlacklistModal() {
     const name = document.createElement("span");
     name.className = "name";
     name.textContent = meme.name;
+
+    // Preview thumbnail
+    const preview = document.createElement("img");
+    preview.src = "file:///" + meme.path.replace(/\\/g, "/");
+    preview.style.cssText = "width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0;background:var(--bg-card)";
+    preview.loading = "lazy";
+    item.insertBefore(preview, name);
 
     const restoreBtn = document.createElement("button");
     restoreBtn.className = "restore-btn";
@@ -1787,7 +1795,8 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
   const volume = currentVolume;
 
   // Send to all selected targets
-  let successCount = 0;
+  let successList = [];
+  let failList = [];
   let lastTarget = "";
   const localPreview =
     document.getElementById("panel-local-preview")?.checked ?? true;
@@ -1848,22 +1857,31 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
     }
 
     if (result && result.ok) {
-      successCount++;
+      successList.push(target);
       await window.memedrop.addTarget(target);
       await window.memedrop.addHistory({
         target,
         name: selectedMeme.name,
         ts: Date.now(),
       });
+    } else {
+      failList.push(target);
     }
   }
 
   sendBtn.disabled = false;
   sendBtn.textContent = "🚀 Envoyer";
 
-  if (successCount > 0) {
-    panelStatus.textContent = `✅ Drop envoyé à ${successCount}/${targets.length} cible(s)`;
-    panelStatus.className = "panel-status success";
+  if (targets.length > 0) {
+    panelStatus.className = failList.length === targets.length ? "panel-status error" : "panel-status success";
+    if (successList.length > 0 && failList.length > 0) {
+      panelStatus.textContent = "✅ " + successList.length + "/" + targets.length + " — " + failList.join(", ") + " ❌";
+      panelStatus.title = "Reçu: " + successList.join(", ") + "\nÉchec: " + failList.join(", ");
+    } else if (failList.length === 0) {
+      panelStatus.textContent = "✅ Envoyé à " + successList.join(", ");
+    } else {
+      panelStatus.textContent = "❌ Échec: " + failList.join(", ");
+    }
 
     // Section F: Persist audio pairing if selected
     if (audioPath) {
