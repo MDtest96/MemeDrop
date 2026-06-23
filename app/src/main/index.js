@@ -1016,6 +1016,7 @@ ipcMain.handle("drop:send", async (_e, payload) => {
             }
           : null,
         caption: formattedPayload.caption,
+        captionBelow: formattedPayload.captionBelow || false,
         rain: formattedPayload.rain,
         from: { id: "me", username: "Moi" },
         ts: Date.now(),

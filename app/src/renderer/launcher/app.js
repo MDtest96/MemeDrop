@@ -1845,6 +1845,7 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
           effectiveDuration = 10;
         }
       }
+      const captionBelow = document.getElementById("panel-caption-below")?.checked || false;
       result = await window.memedrop.sendDrop({
         target,
         filePath: selectedMeme.path,
@@ -1855,6 +1856,7 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
         volume,
         duration: effectiveDuration,
         showLocalPreview: idx === 0 ? localPreview : false,
+        captionBelow,
       });
     }
 

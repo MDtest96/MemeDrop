@@ -94,6 +94,8 @@ async function formatQuickDropPayload(payload) {
   if (errors.length > 0) {
     result.warning = errors.join("; ");
   }
+  // Transmettre les options spéciales
+  if (payload.captionBelow) result.captionBelow = true;
 
   return result;
 }

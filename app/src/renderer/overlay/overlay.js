@@ -408,7 +408,7 @@ function playAudioDrop({ media, caption, from, settings }) {
   if (settings?.soundOnArrival) playPop(settings.volume);
 }
 
-function renderDrop({ media, caption, from, settings, music, rain }) {
+function renderDrop({ media, caption, from, settings, music, rain, captionBelow }) {
   // Drop pluie seule — pas de média visuel, juste les émojis + son
   if (!media) {
     if (rain) renderRain(rain);
@@ -566,7 +566,13 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
     const bar = document.createElement('div');
     bar.className = 'caption-bar';
     bar.textContent = String(caption).trim().slice(0, 80);
-    mediaBox.appendChild(bar);
+    if (captionBelow) {
+      // Légende sous l'image : l'ajouter à wrap (en dehors de mediaBox)
+      wrap.appendChild(bar);
+    } else {
+      // Légende par-dessus l'image
+      mediaBox.appendChild(bar);
+    }
   }
 
   wrap.appendChild(mediaBox);
