@@ -236,3 +236,27 @@ memedrop/
         ├── settings.js
         └── styles.css
 ```
+
+---
+
+## Commands
+
+<!-- AUTO-GENERATED:SCRIPTS -->
+| Commande | Description |
+|----------|-------------|
+| `npm start` | Lancer l'app Electron |
+| `npm run dev` | Dev mode avec nodemon (auto-reload) |
+| `npm run build:win` | Builder l'installateur Windows |
+| `npm run release` | Builder + publier sur GitHub Releases |
+| `npm test` | Exécuter les tests unitaires (vitest) |
+| `npm run coverage` | Test coverage report |
+<!-- /AUTO-GENERATED:SCRIPTS -->
+
+## Environment Variables
+
+<!-- AUTO-GENERATED:ENV -->
+| Variable | Requis | Description |
+|----------|--------|-------------|
+| `DEFAULT_SERVER` | Non | URL du serveur WebSocket bot (défaut: `wss://memedrop-bot-production.up.railway.app`) |
+| `GH_TOKEN` | Oui (release) | Token GitHub pour publier les releases |
+<!-- /AUTO-GENERATED:ENV -->

@@ -530,41 +530,46 @@ function connectWS() {
             fs.mkdirSync(memeFolder, { recursive: true });
 
           if (data.buffer) {
-            // Fichier envoyé en base64 → sauvegarder localement
             const safeName = path.basename(data.name).replace(/[^a-zA-Z0-9._-]/g, "_");
             if (safeName === "_" || safeName === ".") break;
-            // Nom simplifié : shared_ + nom original (sans timestamp pour lisibilité)
             let filename = "shared_" + safeName;
             let destPath = path.join(memeFolder, filename);
-            // Gérer les collisions : ajouter un suffixe _2, _3...
             let counter = 2;
             while (fs.existsSync(destPath)) {
-              const dot = safeName.lastIndexOf(".");
-              const base = dot >= 0 ? safeName.substring(0, dot) : safeName;
-              const ext = dot >= 0 ? safeName.substring(dot) : "";
+              var dot = safeName.lastIndexOf(".");
+              var base = dot >= 0 ? safeName.substring(0, dot) : safeName;
+              var ext = dot >= 0 ? safeName.substring(dot) : "";
               filename = "shared_" + base + "_" + counter + ext;
-              const destPath = path.join(memeFolder, filename);
+              destPath = path.join(memeFolder, filename);
+              counter++;
+            }
 
-              // Vérifier par hash SHA256 (premiers 4KB) pour déduplication
-              let hashDuplicate = false;
-              try {
-                const incomingBuffer = Buffer.from(data.buffer, "base64");
-                const incomingHash = crypto.createHash("sha256").update(incomingBuffer.slice(0, 4096)).digest("hex");
-                const existingFiles = fs.readdirSync(memeFolder);
+            // Hash dedup (SHA256 premiers 4KB)
+            try {
+              var incomingBuffer = Buffer.from(data.buffer, "base64");
+              var incomingHash = crypto.createHash("sha256").update(incomingBuffer.slice(0, 4096)).digest("hex");
+              var existingFiles = fs.readdirSync(memeFolder);
+              var hashDuplicate = existingFiles.some(function(f) {
+                if (!f.startsWith("shared_")) return false;
+                try {
+                  var existingPath = path.join(memeFolder, f);
+                  var existingRaw = fs.readFileSync(existingPath);
+                  var existingHash = crypto.createHash("sha256").update(existingRaw.slice(0, 4096)).digest("hex");
+                  return existingHash === incomingHash;
+                } catch { return false; }
+              });
               if (hashDuplicate) {
                 console.log("[ws] meme_sync skipped (duplicate hash):", safeName);
                 break;
               }
             } catch (e) {
               console.warn("[ws] hash check failed:", e.message);
-              // Continuer même si le hash échoue
             }
 
             fs.writeFileSync(destPath, Buffer.from(data.buffer, "base64"));
 
-            // Ajouter le tag "importé" au fichier importé
             try {
-              const allTags = store.get("tags") || {};
+              var allTags = store.get("tags") || {};
               if (!allTags[destPath]) allTags[destPath] = [];
               if (!allTags[destPath].includes("importé")) allTags[destPath].push("importé");
               store.set("tags", allTags);
@@ -572,8 +577,7 @@ function connectWS() {
               console.error("[ws] failed to tag imported meme:", e.message);
             }
 
-            // Notifier les fenêtres du nouveau meme
-            for (const w of BrowserWindow.getAllWindows()) {
+            for (var w of BrowserWindow.getAllWindows()) {
               if (!w.isDestroyed()) {
                 w.webContents.send("meme:synced", {
                   name: path.parse(filename).name,
@@ -583,7 +587,6 @@ function connectWS() {
                 });
               }
             }
-            // Notifier aussi library:changed de façon débouncée
             notifyLibraryChanged();
           } else if (data.url) {
             // URL seulement → laisser le renderer la downloader
