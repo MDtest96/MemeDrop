@@ -19,6 +19,7 @@ function setupSettings(store, callbacks, mockElectron = null) {
       guilds: store.get("guilds"),
       giphyApiKey: store.get("giphyApiKey"),
       memeFolderPath: store.get("memeFolderPath"),
+      triageState: store.get("triageState"),
     };
   });
 
@@ -46,20 +47,24 @@ function setupSettings(store, callbacks, mockElectron = null) {
         if (callbacks.onDisplayChanged) callbacks.onDisplayChanged();
       }
 
-      if ("volume" in patch ||
-          "musicVolume" in patch ||
-          "opacity" in patch ||
-          "duration" in patch ||
-          "videoDuration" in patch ||
-          "spotlightOnDrop" in patch ||
-          "theme" in patch) {
+      if (
+        "volume" in patch ||
+        "musicVolume" in patch ||
+        "opacity" in patch ||
+        "duration" in patch ||
+        "videoDuration" in patch ||
+        "spotlightOnDrop" in patch ||
+        "theme" in patch
+      ) {
         const livePatch = {};
         if ("volume" in patch) livePatch.volume = patch.volume;
         if ("musicVolume" in patch) livePatch.musicVolume = patch.musicVolume;
         if ("opacity" in patch) livePatch.opacity = patch.opacity;
         if ("duration" in patch) livePatch.duration = patch.duration;
-        if ("videoDuration" in patch) livePatch.videoDuration = patch.videoDuration;
-        if ("spotlightOnDrop" in patch) livePatch.spotlightOnDrop = patch.spotlightOnDrop;
+        if ("videoDuration" in patch)
+          livePatch.videoDuration = patch.videoDuration;
+        if ("spotlightOnDrop" in patch)
+          livePatch.spotlightOnDrop = patch.spotlightOnDrop;
         if ("theme" in patch) livePatch.theme = patch.theme;
 
         if (callbacks.onLivePatch) callbacks.onLivePatch(livePatch);

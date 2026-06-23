@@ -517,14 +517,27 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
     mediaBox.appendChild(el);
   }
 
+  wrap.appendChild(mediaBox);
+
   if (caption && String(caption).trim()) {
     const bar = document.createElement('div');
     bar.className = 'caption-bar';
     bar.textContent = String(caption).trim().slice(0, 80);
-    mediaBox.appendChild(bar);
+    if (captionBelow) {
+      // Légende sous l'image : flex column pour empiler média + texte
+      mediaBox.style.display = 'flex';
+      mediaBox.style.flexDirection = 'column';
+      mediaBox.style.alignItems = 'flex-start';
+      mediaBox.style.overflow = 'hidden';
+      mediaBox.style.borderRadius = '14px';
+      if (el) el.style.borderRadius = '0';
+      bar.style.cssText = 'padding:8px 14px;font-size:14px;line-height:1.3;background:rgba(0,0,0,0.7);box-sizing:border-box;width:100%;text-align:center;color:#fff;word-break:break-word';
+      mediaBox.appendChild(bar);
+    } else {
+      // Légende par-dessus l'image
+      mediaBox.appendChild(bar);
+    }
   }
-
-  wrap.appendChild(mediaBox);
   anchor.appendChild(wrap);
   stage.appendChild(anchor);
   onVisualDropAdded();   // démarre le sondage curseur si c'est le 1er drop visuel
@@ -573,7 +586,7 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
   function removeNow({ smooth = false } = {}) {
     if (removed || !anchor.isConnected) return;
     removed = true;
-    
+
     // Aggressive cleanup for video to prevent zombie audio
     if (isVideo && el) {
       livePlayables.delete(el);
@@ -583,17 +596,17 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
         el.load();
       } catch (e) {}
     }
-    
+
     // Stoppe la musique liée à cette image si elle joue encore
     if (musicAudio) {
-      try { 
+      try {
         musicAudio.pause();
         musicAudio.removeAttribute('src');
         musicAudio.load();
       } catch (e) {}
       liveAudios.delete(musicAudio);
     }
-    
+
     liveDrops.delete(dropMeta);
     wrap.classList.add(smooth ? 'closing' : 'leaving');
     setTimeout(() => {
