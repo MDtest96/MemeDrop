@@ -2849,6 +2849,17 @@ document.getElementById("btn-view-toggle")?.addEventListener("click", () => {
   toast(listViewMode ? "📄 Vue liste" : "📋 Vue grille");
 });
 
+// ── Caption position toggle (overlay/below) ─────────────────────────
+let captionBelow = false;
+document.getElementById("btn-caption-toggle")?.addEventListener("click", () => {
+  captionBelow = !captionBelow;
+  document.getElementById("grid").classList.toggle("caption-below", captionBelow);
+  document.querySelectorAll(".meme-card").forEach(function(c) {
+    c.classList.toggle("caption-below", captionBelow);
+  });
+  toast(captionBelow ? "📝 Légende sous l'image" : "📝 Légende sur l'image");
+});
+
 document
   .getElementById("btn-send-collage")
   ?.addEventListener("click", async () => {

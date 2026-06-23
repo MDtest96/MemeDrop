@@ -352,6 +352,26 @@ body {
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
+    z-index: 1;
+}
+
+/* Caption sous l'image (mode alternatif) */
+.meme-card.caption-below {
+    aspect-ratio: auto;
+    display: flex;
+    flex-direction: column;
+}
+.meme-card.caption-below .meme-card-name {
+    position: static;
+    background: var(--bg-card);
+    color: var(--text);
+    padding: 4px 6px;
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: auto;
+    border-top: 1px solid var(--border);
 }
 
 /* ── Dropzone ───────────────────────────────────────────────────── */
