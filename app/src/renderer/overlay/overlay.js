@@ -567,7 +567,8 @@ function renderDrop({ media, caption, from, settings, music, rain, captionBelow 
     bar.className = 'caption-bar';
     bar.textContent = String(caption).trim().slice(0, 80);
     if (captionBelow) {
-      // Légende sous l'image : l'ajouter à wrap (en dehors de mediaBox)
+      // Légende sous l'image : style statique
+      bar.style.cssText = 'position:static;display:block;width:100%;padding:8px 14px;font-size:14px;line-height:1.3;background:rgba(0,0,0,0.7);border-radius:0 0 14px 14px;box-sizing:border-box';
       wrap.appendChild(bar);
     } else {
       // Légende par-dessus l'image
