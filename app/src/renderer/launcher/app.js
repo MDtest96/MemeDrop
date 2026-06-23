@@ -1470,7 +1470,18 @@ async function renderAudioSelect(selectedPath) {
     opt.value = audio.path;
     opt.textContent = audio.name;
     if (audio.path === selectedPath) opt.selected = true;
+    // Ajouter la durée de manière asynchrone
     panelAudioSelect.appendChild(opt);
+  }
+  // Récupérer les durées pour chaque audio
+  for (const opt of panelAudioSelect.options) {
+    if (!opt.value) continue;
+    try {
+      const info = await window.memedrop.getAudioDuration(opt.value);
+      if (info && info.label !== "?") {
+        opt.textContent = opt.textContent + " (" + info.label + ")";
+      }
+    } catch {}
   }
 }
 

@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld("memedrop", {
   setAudioPairing: (meme, audio) =>
     ipcRenderer.invoke("audio:setPairing", meme, audio),
   getAudioPairings: () => ipcRenderer.invoke("audio:getPairings"),
+  getAudioDuration: (path) => ipcRenderer.invoke("audio:getDuration", path),
   getHistory: () => ipcRenderer.invoke("history:get"),
   addHistory: (entry) => ipcRenderer.invoke("history:add", entry),
   getStreak: () => ipcRenderer.invoke("streak:get"),
