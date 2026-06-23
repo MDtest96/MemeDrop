@@ -460,6 +460,7 @@ async function loadMemes() {
   }
   renderGrid();
   updateTriageCount();
+  updateBlacklistBadge();
 }
 
 let currentRenderId = 0;
@@ -815,6 +816,18 @@ document
     await openBlacklistModal();
   });
 
+async function updateBlacklistBadge() {
+  try {
+    const hidden = await window.memedrop.listHiddenMemes();
+    const btn = document.getElementById("btn-blacklist");
+    if (btn) {
+      const count = hidden ? hidden.length : 0;
+      btn.textContent = count > 0 ? "🚫 " + count : "🚫 Blacklist";
+      btn.title = count > 0 ? count + " meme(s) caché(s)" : "Gérer les memes cachés";
+    }
+  } catch {}
+}
+
 async function openBlacklistModal() {
   const modal = document.getElementById("blacklist-modal");
   if (!modal) return;
@@ -848,6 +861,7 @@ async function openBlacklistModal() {
       await openBlacklistModal(); // Refresh
       await loadMemes();
       toast(`♻️ "${meme.name}" restauré`);
+      updateBlacklistBadge();
     });
 
     const deleteBtn = document.createElement("button");
@@ -934,6 +948,20 @@ document.addEventListener("keydown", (e) => {
       modal.classList.add("hidden");
       e.preventDefault();
     }
+  }
+});
+
+// ── Raccourcis clavier ────────────────────────────────────────
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+    e.preventDefault();
+    const search = document.getElementById("search");
+    if (search) search.focus();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "t") {
+    e.preventDefault();
+    const advanced = document.getElementById("triage-advanced");
+    if (advanced) advanced.classList.toggle("hidden");
   }
 });
 
