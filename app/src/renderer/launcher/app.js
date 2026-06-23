@@ -102,6 +102,7 @@ let isGiphyLoading = false;
 let searchTimeout = null;
 let collageMode = false;
 let collagePaths = [];
+let lastClickedIndex = -1;
 
 // ── Triage state ─────────────────────────────────────────────────
 const triageState = {
@@ -485,8 +486,11 @@ async function renderGrid() {
     filtered = filtered.filter(
       (m) =>
         m.name.toLowerCase().includes(q) ||
+        m.path.toLowerCase().includes(q) ||
+        m.kind.includes(q) ||
         (allTagsMap[m.path] &&
-          allTagsMap[m.path].some((t) => t.toLowerCase().includes(q))),
+          allTagsMap[m.path].some((t) => t.toLowerCase().includes(q))) ||
+        (m.name && m.name.toLowerCase().includes(q.replace(/\./g, ""))),
     );
   }
 
@@ -720,8 +724,22 @@ async function renderGrid() {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         toggleSelection(meme.path);
+        lastClickedIndex = filtered.indexOf(meme);
         return;
       }
+      // Shift+Click sélectionne une plage
+      if (e.shiftKey && lastClickedIndex >= 0) {
+        e.preventDefault();
+        const currentIndex = filtered.indexOf(meme);
+        const start = Math.min(lastClickedIndex, currentIndex);
+        const end = Math.max(lastClickedIndex, currentIndex);
+        for (let i = start; i <= end; i++) {
+          selectedPaths.add(filtered[i].path);
+        }
+        updateSelectionUI();
+        return;
+      }
+      lastClickedIndex = filtered.indexOf(meme);
       openDropPanel(meme);
     });
 
