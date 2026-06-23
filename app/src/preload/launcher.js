@@ -119,6 +119,8 @@ contextBridge.exposeInMainWorld("memedrop", {
   downloadUpdate: () => ipcRenderer.invoke("update:download"),
   installUpdate: () => ipcRenderer.invoke("update:install"),
   listDisplays: () => ipcRenderer.invoke("displays:list"),
+  getMuteSchedule: () => ipcRenderer.invoke("mute:getSchedule"),
+  setMuteSchedule: (s) => ipcRenderer.invoke("mute:setSchedule", s),
   onUpdateState: (callback) => {
     const fn = (_e, state) => callback(state);
     ipcRenderer.on("update-state", fn);

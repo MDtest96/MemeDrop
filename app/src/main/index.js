@@ -733,6 +733,13 @@ ipcMain.handle("mute:set", (_e, minutes) => {
 });
 ipcMain.handle("mute:get", () => (isMuted() ? store.get("muteUntil") : null));
 
+// ── Programmateur de mute ────────────────────────────────────────────────
+ipcMain.handle("mute:getSchedule", () => store.get("muteSchedule") || { enabled: false, startHour: 22, startMinute: 0, endHour: 8, endMinute: 0 });
+ipcMain.handle("mute:setSchedule", (_e, schedule) => {
+  store.set("muteSchedule", schedule);
+  return { ok: true };
+});
+
 // Historique des drops géré par le module history
 
 // App version + update IPC handled by updater module
@@ -812,6 +819,43 @@ ipcMain.on("overlay:set-ignore-mouse", (_e, ignore) => {
   }
 });
 
+// ── Programmateur de mute (mode "Ne pas déranger") ─────────────────────
+function initMuteScheduler() {
+  const check = () => {
+    const schedule = store.get("muteSchedule");
+    if (!schedule || !schedule.enabled) return;
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const startMinutes = schedule.startHour * 60 + schedule.startMinute;
+    const endMinutes = schedule.endHour * 60 + schedule.endMinute;
+
+    let shouldMute = false;
+    if (startMinutes <= endMinutes) {
+      shouldMute = currentMinutes >= startMinutes && currentMinutes < endMinutes;
+    } else {
+      // Chevauchement minuit (ex: 22h → 6h)
+      shouldMute = currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    }
+
+    const isMuted = !!store.get("muteUntil");
+    if (shouldMute && !isMuted) {
+      store.set("muteUntil", -1);
+      console.log("[scheduler] auto-muted");
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send("mute:toggle", true);
+      }
+    } else if (!shouldMute && isMuted && store.get("muteUntil") === -1) {
+      store.set("muteUntil", null);
+      console.log("[scheduler] auto-unmuted");
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send("mute:toggle", false);
+      }
+    }
+  };
+  check();
+  setInterval(check, 30000); // Vérifier toutes les 30s
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // App lifecycle
 // ─────────────────────────────────────────────────────────────────────────────
@@ -849,6 +893,8 @@ if (!gotLock) {
     cleanupDuplicateSharedMemes();
     // Migrer les noms des anciens hiddenMemes vers hiddenMemeNames
     migrateHiddenMemeNames();
+    // Programmateur de mute
+    initMuteScheduler();
 
     // Debug shortcuts — work even when the overlay (which is non-focusable)
     // can't receive keyboard events normally. We use Ctrl+Alt+X combos so we

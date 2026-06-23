@@ -603,6 +603,28 @@
                             </option>
                         </select>
                     </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
+                        <input type="checkbox" id="setting-mute-schedule" />
+                        🤫 Ne pas déranger (programmé)
+                    </label>
+                    <div id="mute-schedule-options" class="hidden" style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;align-items:center">
+                        <span style="font-size:11px;color:var(--text-dim)">De</span>
+                        <select id="schedule-start-hour" class="input" style="width:65px"></select>
+                        <span style="font-size:12px;color:var(--text-dim)">:</span>
+                        <select id="schedule-start-minute" class="input" style="width:55px"></select>
+                        <span style="font-size:11px;color:var(--text-dim)">à</span>
+                        <select id="schedule-end-hour" class="input" style="width:65px"></select>
+                        <span style="font-size:12px;color:var(--text-dim)">:</span>
+                        <select id="schedule-end-minute" class="input" style="width:55px"></select>
+                    </div>
+                            <option value="mute-inf">
+                                🔇 Muet - Jusqu'à réactivation
+                            </option>
+                            <option value="pause">
+                                🔴 Pause (Couper complètement la connexion)
+                            </option>
+                        </select>
+                    </label>
                 </div>
             </section>
 
@@ -952,6 +974,7 @@
                                 <option value="">Messages sauvegardés...</option>
                             </select>
                         </div>
+                        <span id="caption-char-count" style="font-size:10px;color:var(--text-dim);text-align:right">0/80</span>
                     </div>
                     <div class="field-row">
                         <div class="field flex-1">

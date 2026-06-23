@@ -459,8 +459,12 @@ async function loadMemes() {
 }
 
 let currentRenderId = 0;
+const PAGE_SIZE = 50;
+let currentPage = 0;
+
 async function renderGrid() {
   const renderId = ++currentRenderId;
+  currentPage = 0;
 
   // Filter
   let filtered = allMemes;
@@ -471,9 +475,17 @@ async function renderGrid() {
     filtered = filtered.filter((m) => types.includes(m.kind));
   }
   if (activeTagFilter) {
-    filtered = filtered.filter(
-      (m) => m.tags && m.tags.includes(activeTagFilter),
-    );
+    if (activeTagFilter.startsWith("!")) {
+      // Recherche inversée : exclure le tag
+      const excludeTag = activeTagFilter.substring(1);
+      filtered = filtered.filter(
+        (m) => !m.tags || !m.tags.includes(excludeTag),
+      );
+    } else {
+      filtered = filtered.filter(
+        (m) => m.tags && m.tags.includes(activeTagFilter),
+      );
+    }
   }
   if (currentQuery) {
     const q = currentQuery.toLowerCase();
@@ -518,10 +530,20 @@ async function renderGrid() {
     });
   }
 
+  // Pagination
+  const totalFiltered = filtered.length;
+  const pageCount = Math.ceil(totalFiltered / PAGE_SIZE);
+  const pageStart = currentPage * PAGE_SIZE;
+  filtered = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+
   // Clear grid
   const cards = grid.querySelectorAll(".meme-card");
   cards.forEach((c) => c.remove());
   gridEmpty.classList.add("hidden");
+
+  // Remove old load-more button
+  const oldLoadMore = grid.querySelector(".load-more-bar");
+  if (oldLoadMore) oldLoadMore.remove();
 
   if (filtered.length === 0) {
     gridEmpty.classList.remove("hidden");
@@ -747,7 +769,25 @@ async function renderGrid() {
   }
 
   grid.appendChild(fragment);
-  memeCount.textContent = `${filtered.length} meme${filtered.length > 1 ? "s" : ""}`;
+
+  // Pagination
+  if (pageCount > 1) {
+    const bar = document.createElement("div");
+    bar.style.cssText = "grid-column:1/-1;text-align:center;padding:12px;font-size:12px;color:var(--text-dim)";
+    if (currentPage < pageCount - 1) {
+      const btn = document.createElement("button");
+      btn.className = "primary";
+      btn.style.cssText = "padding:6px 24px;font-size:13px";
+      btn.textContent = "Afficher plus (" + (pageStart + PAGE_SIZE) + "/" + totalFiltered + ")";
+      btn.addEventListener("click", () => { currentPage++; renderGrid(); });
+      bar.appendChild(btn);
+    } else {
+      bar.textContent = totalFiltered + " memes - fin";
+    }
+    grid.appendChild(bar);
+  }
+
+  memeCount.textContent = totalFiltered + " meme" + (totalFiltered > 1 ? "s" : "");
 }
 
 // ── Search (debounced 300ms) ──────────────────────────────────────────
@@ -974,6 +1014,11 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     const advanced = document.getElementById("triage-advanced");
     if (advanced) advanced.classList.toggle("hidden");
+  }
+  // Ctrl+Shift+L → renvoyer le dernier drop
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "l" || e.key === "L")) {
+    e.preventDefault();
+    handleResend();
   }
 });
 
@@ -1931,6 +1976,18 @@ document.getElementById("caption-templates")?.addEventListener("change", (e) => 
   const val = e.target.value;
   if (val && panelCaption) panelCaption.value = val;
 });
+
+// ── Character counter for caption ─────────────────────────────────
+if (panelCaption) {
+  panelCaption.addEventListener("input", () => {
+    const counter = document.getElementById("caption-char-count");
+    if (counter) {
+      const len = panelCaption.value.length;
+      counter.textContent = len + "/80";
+      counter.style.color = len > 80 ? "#ff5e8a" : "var(--text-dim)";
+    }
+  });
+}
 
 async function triggerScreenshot() {
   try {
@@ -3010,6 +3067,57 @@ async function initSettings() {
       }
     });
   }
+
+  // ── Mute scheduler programme ────────────────────────────────────────
+  const scheduleCheckbox = document.getElementById("setting-mute-schedule");
+  const scheduleOptions = document.getElementById("mute-schedule-options");
+  function populateSelect(id, max) {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = "";
+    for (let i = 0; i < max; i++) {
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = String(i).padStart(2, "0");
+      sel.appendChild(opt);
+    }
+  }
+  populateSelect("schedule-start-hour", 24);
+  populateSelect("schedule-start-minute", 60);
+  populateSelect("schedule-end-hour", 24);
+  populateSelect("schedule-end-minute", 60);
+
+  async function loadSchedule() {
+    if (!window.memedrop.getMuteSchedule) return;
+    const sched = await window.memedrop.getMuteSchedule();
+    if (sched) {
+      scheduleCheckbox.checked = sched.enabled || false;
+      document.getElementById("schedule-start-hour").value = sched.startHour || 22;
+      document.getElementById("schedule-start-minute").value = sched.startMinute || 0;
+      document.getElementById("schedule-end-hour").value = sched.endHour || 8;
+      document.getElementById("schedule-end-minute").value = sched.endMinute || 0;
+      scheduleOptions.classList.toggle("hidden", !sched.enabled);
+    }
+  }
+  async function saveSchedule() {
+    if (!window.memedrop.setMuteSchedule) return;
+    await window.memedrop.setMuteSchedule({
+      enabled: scheduleCheckbox.checked,
+      startHour: parseInt(document.getElementById("schedule-start-hour").value) || 22,
+      startMinute: parseInt(document.getElementById("schedule-start-minute").value) || 0,
+      endHour: parseInt(document.getElementById("schedule-end-hour").value) || 8,
+      endMinute: parseInt(document.getElementById("schedule-end-minute").value) || 0,
+    });
+  }
+  loadSchedule();
+  scheduleCheckbox.addEventListener("change", () => {
+    scheduleOptions.classList.toggle("hidden", !scheduleCheckbox.checked);
+    saveSchedule();
+    toast(scheduleCheckbox.checked ? "🤫 Ne pas déranger activé" : "🔔 Mode normal");
+  });
+  document.querySelectorAll("#schedule-start-hour, #schedule-start-minute, #schedule-end-hour, #schedule-end-minute").forEach(el => {
+    el.addEventListener("change", saveSchedule);
+  });
 
   if (settingOpacity) {
     settingOpacity.value = settings.opacity ?? 1.0;
