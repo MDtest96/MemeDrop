@@ -423,6 +423,7 @@ wss.on("connection", (ws) => {
           : null,
         caption: msg.caption ? String(msg.caption).slice(0, 80) : null,
         duration: msg.duration || null,
+        captionBelow: msg.captionBelow ? true : false,
         from: {
           id: meta.userId,
           username: meta.username || "QuickLauncher",
@@ -518,6 +519,62 @@ wss.on("connection", (ws) => {
       console.log(
         `[quick_drop] ${meta.userId} -> ${targetUserId} (${media?.name || "?"})`,
       );
+      return;
+    }
+
+    // ── Meme sync: un utilisateur partage un nouveau meme à tous ───────────
+    if (msg.type === "meme_sync") {
+      const meta = wsMeta.get(ws);
+      if (!meta?.userId) {
+        sendJson(ws, { type: "meme_sync_ack", ok: false, error: "Not linked" });
+        return;
+      }
+      const memePayload = {
+        type: "meme_sync",
+        data: msg.data, // { name, path, kind, buffer?, url?, mime? }
+        from: { id: meta.userId, username: meta.username },
+        ts: Date.now(),
+      };
+      // Broadcast to ALL other connected users
+      let sentCount = 0;
+      for (const [uid, uLink] of userLinks) {
+        if (uid !== meta.userId) {
+          for (const sock of uLink.sockets) {
+            if (sock.readyState === 1) {
+              sendJson(sock, memePayload);
+              sentCount++;
+            }
+          }
+        }
+      }
+      sendJson(ws, { type: "meme_sync_ack", ok: true, sent: sentCount });
+      console.log(
+        `[meme_sync] ${meta.userId} broadcasted to ${sentCount} user(s)`,
+      );
+      return;
+    }
+
+    // ── Library sync request: un utilisateur demande les memes des autres ──
+    if (msg.type === "library_sync_request") {
+      const meta = wsMeta.get(ws);
+      if (!meta?.userId) {
+        sendJson(ws, { type: "library_sync_request_ack", ok: false, error: "Not linked" });
+        return;
+      }
+      // Demandeur = meta.userId, on broadcast aux AUTRES uniquement
+      let asked = 0;
+      for (const [uid, uLink] of userLinks) {
+        if (uid !== meta.userId) {
+          for (const sock of uLink.sockets) {
+            if (sock.readyState === 1) {
+              sendJson(sock, { type: "library_sync_request", from: meta.userId });
+              asked++;
+            }
+          }
+        }
+      }
+      sendJson(ws, { type: "library_sync_request_ack", ok: true, asked });
+      console.log(`[library_sync_request] ${meta.userId} asked ${asked} user(s)`);
       return;
     }
   });
@@ -1501,7 +1558,7 @@ function getConnectedUsersList() {
     const discordUser = client.users.cache.get(userId);
     users.push({
       id: userId,
-      username: discordUser ? discordUser.username : "Inconnu"
+      username: discordUser ? discordUser.username : "Inconnu",
     });
   }
   return { count: users.length, users };
@@ -1510,7 +1567,7 @@ function getConnectedUsersList() {
 function broadcastConnectedUsers() {
   const { count, users } = getConnectedUsersList();
   const msg = JSON.stringify({ type: "users:list", count, users });
-  wss.clients.forEach(c => {
+  wss.clients.forEach((c) => {
     if (c.readyState === 1) c.send(msg);
   });
 }

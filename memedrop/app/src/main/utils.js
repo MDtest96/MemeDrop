@@ -6,12 +6,27 @@ const { Jimp } = require('jimp');
 function getMemeFolder(store, app) {
   const custom = store.get('memeFolderPath');
   if (custom) {
-    if (!fs.existsSync(custom)) fs.mkdirSync(custom, { recursive: true });
-    return custom;
+    try {
+      if (!fs.existsSync(custom)) fs.mkdirSync(custom, { recursive: true });
+      return custom;
+    } catch (err) {
+      console.error("[getMemeFolder] custom path failed:", err.message);
+      // Fallback vers default
+    }
   }
-  const defaultPath = path.join(app.getPath('documents'), 'MemeDrop', 'memes');
-  if (!fs.existsSync(defaultPath)) fs.mkdirSync(defaultPath, { recursive: true });
-  return defaultPath;
+
+  try {
+    const defaultPath = path.join(app.getPath('documents'), 'MemeDrop', 'memes');
+    if (!fs.existsSync(defaultPath)) fs.mkdirSync(defaultPath, { recursive: true });
+    return defaultPath;
+  } catch (err) {
+    console.warn("[getMemeFolder] documents path failed:", err.message);
+    // Ultimate fallback: %APPDATA%/MemeDrop/memes
+    const fallback = path.join(app.getPath('appData'), 'MemeDrop', 'memes');
+    if (!fs.existsSync(fallback)) fs.mkdirSync(fallback, { recursive: true });
+    console.log("[getMemeFolder] using fallback:", fallback);
+    return fallback;
+  }
 }
 
 // ── formatQuickDropPayload ────────────────────────────────────────────────
@@ -43,6 +58,8 @@ async function formatQuickDropPayload(payload) {
   }
 
   let music = null;
+  let errors = [];
+
   if (payload.audioPath) {
     try {
       const ext = path.extname(payload.audioPath).toLowerCase();
@@ -59,10 +76,11 @@ async function formatQuickDropPayload(payload) {
       };
     } catch (err) {
       console.error("Failed to read audio file for drop:", err);
+      errors.push("audio: " + err.message);
     }
   }
 
-  return {
+  const result = {
     type: 'quick_drop',
     target: payload.target,
     caption: payload.caption,
@@ -72,6 +90,14 @@ async function formatQuickDropPayload(payload) {
     duration: payload.duration || undefined,
     rain: payload.rain || undefined,
   };
+
+  if (errors.length > 0) {
+    result.warning = errors.join("; ");
+  }
+  // Transmettre les options spéciales
+  if (payload.captionBelow) result.captionBelow = true;
+
+  return result;
 }
 
 // ── getPreviewTarget ──────────────────────────────────────────────────────
@@ -197,6 +223,22 @@ async function resolveMediaUrl(url) {
         if (data.url) return { url: data.url, kind: 'gif', mime: 'image/gif', sourceUrl: url };
       }
     } catch { /* ignore */ }
+  }
+
+  // 6. Spotify → sauvegarder l'URL pour le partage
+  if (/open\.spotify\.com/i.test(url) || /spotify\.com/i.test(url)) {
+    try {
+      // Tentative de récupérer la cover via l'API oEmbed
+      const res = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.thumbnail_url) {
+          return { url: data.thumbnail_url, kind: 'image', mime: 'image/jpeg', sourceUrl: url };
+        }
+      }
+    } catch { /* ignore */ }
+    // Fallback: retourner l'URL Spotify comme weblink
+    return { url, kind: 'image', mime: 'text/uri-list', unresolved: true, sourceUrl: url };
   }
 
   // Fallback universel

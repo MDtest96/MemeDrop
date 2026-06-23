@@ -36,6 +36,35 @@ function setupAudio(store, app) {
     store.set("audioPairings", pairings);
   });
   ipcMain.handle("audio:getPairings", () => store.get("audioPairings") || {});
+
+  // ── Obtenir la durée approximative d'un fichier audio ───────────────
+  ipcMain.handle("audio:getDuration", async (_e, filePath) => {
+    try {
+      const stat = await fs.promises.stat(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      const size = stat.size;
+      // Estimation basée sur la taille et le format
+      let durationSec = 0;
+      if (ext === ".mp3") {
+        // bitrate typique MP3: 128-320 kbps, moyenne ~192
+        durationSec = size / (192 * 125);
+      } else if (ext === ".wav") {
+        // WAV 16-bit 44100Hz stéréo: ~176 KB/s
+        durationSec = size / (176 * 1024);
+      } else if (ext === ".ogg") {
+        // OGG typique: ~160 kbps
+        durationSec = size / (160 * 125);
+      } else {
+        durationSec = size / (192 * 125);
+      }
+      const mins = Math.floor(durationSec / 60);
+      const secs = Math.floor(durationSec % 60);
+      const label = mins > 0 ? mins + "m" + secs.toString().padStart(2, "0") : secs + "s";
+      return { duration: Math.round(durationSec), label };
+    } catch {
+      return { duration: 0, label: "?" };
+    }
+  });
 }
 
 module.exports = { setupAudio };

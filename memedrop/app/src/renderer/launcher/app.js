@@ -102,6 +102,16 @@ let isGiphyLoading = false;
 let searchTimeout = null;
 let collageMode = false;
 let collagePaths = [];
+let lastClickedIndex = -1;
+
+// ── Triage state ─────────────────────────────────────────────────
+const triageState = {
+  typeFilters: [], // [] = all, ["image","gif"] = spécifiques
+  tag: null,
+  favFilter: "all",
+  sort: "name",
+  query: "",
+};
 
 // ── DOM refs ────────────────────────────────────────────────────────────
 const grid = document.getElementById("grid");
@@ -193,6 +203,7 @@ const unsubConn = window.memedrop.onConnection((state) => {
       pairingDisplay.textContent = state.code || "------";
     } else if (state.status === "linked") {
       pairingDisplay.textContent = `Lié à ${state.user?.username || "inconnu"}`;
+      // Sync manuel uniquement (bouton 📤 Sync) pour économiser les tokens
     } else {
       pairingDisplay.textContent = "------";
     }
@@ -289,14 +300,16 @@ document
         isWeblink: true,
       };
 
-      // Download media to memes folder
+      // Download media to memes folder (utiliser l'URL résolue si disponible)
       let downloaded = null;
+      const downloadTarget = resolvedUrl || url;
       try {
-        downloaded = await window.memedrop.downloadUrl(url);
+        downloaded = await window.memedrop.downloadUrl(downloadTarget);
         if (downloaded) {
           allMemes.unshift(downloaded);
           renderGrid();
           toast(`📥 ${downloaded.name} ajouté à la grille`);
+          window.memedrop.syncMeme(downloaded).catch(() => {});
         }
       } catch (e) {
         console.warn("Could not download weblink media locally:", e);
@@ -306,7 +319,14 @@ document
         // Open drop panel with the DOWNLOADED file (not the URL)
         openDropPanel(downloaded);
       } else {
-        // Fallback: use URL as weblink
+        // Fallback: use URL as weblink — partager l'URL aux autres
+        window.memedrop
+          .syncMeme({
+            name: pseudoMeme.name,
+            url: pseudoMeme.url,
+            kind: pseudoMeme.kind,
+          })
+          .catch(() => {});
         openDropPanel(pseudoMeme);
       }
 
@@ -402,7 +422,7 @@ async function deleteSelected() {
   if (selectedPaths.size === 0) return;
   // Confirmation for multi-delete
   if (selectedPaths.size > 3) {
-    if (!confirm(`Supprimer ${selectedPaths.size} memes définitivement ?`))
+    if (!confirm(`Cacher ${selectedPaths.size} memes de votre grille ?`))
       return;
   }
   const paths = Array.from(selectedPaths);
@@ -415,14 +435,14 @@ async function deleteSelected() {
       clearSelection();
       renderGrid();
       toast(
-        `🗑 ${results.length} fichier${results.length > 1 ? "s" : ""} supprimé${results.length > 1 ? "s" : ""}`,
+        `\uD83D\uDDD1 ${results.length} fichier${results.length > 1 ? "s" : ""} cach\u00E9${results.length > 1 ? "s" : ""} de la grille`,
       );
     } else {
       const errors = results.filter((r) => !r.ok).length;
-      toast(`Erreur lors de la suppression de ${errors} fichier(s)`, "error");
+      toast(`Erreur lors du camouflage de ${errors} fichier(s)`, "error");
     }
   } catch (e) {
-    toast("Erreur de suppression", "error");
+    toast("Erreur de camouflage", "error");
   }
 }
 
@@ -434,30 +454,77 @@ async function loadMemes() {
     console.error("Failed to load memes", e);
   }
   renderGrid();
+  updateTriageCount();
+  updateBlacklistBadge();
 }
 
 let currentRenderId = 0;
+
 async function renderGrid() {
   const renderId = ++currentRenderId;
 
   // Filter
   let filtered = allMemes;
-  if (currentFilter !== "all") {
-    filtered = filtered.filter((m) => m.kind === currentFilter);
+
+  // Filter by type (supports multi-select from triage)
+  const types = triageState.typeFilters;
+  if (types.length > 0) {
+    filtered = filtered.filter((m) => types.includes(m.kind));
   }
   if (activeTagFilter) {
-    filtered = filtered.filter(
-      (m) => m.tags && m.tags.includes(activeTagFilter),
-    );
+    if (activeTagFilter.startsWith("!")) {
+      // Recherche inversée : exclure le tag
+      const excludeTag = activeTagFilter.substring(1);
+      filtered = filtered.filter(
+        (m) => !m.tags || !m.tags.includes(excludeTag),
+      );
+    } else {
+      filtered = filtered.filter(
+        (m) => m.tags && m.tags.includes(activeTagFilter),
+      );
+    }
   }
   if (currentQuery) {
     const q = currentQuery.toLowerCase();
     filtered = filtered.filter(
       (m) =>
         m.name.toLowerCase().includes(q) ||
+        m.path.toLowerCase().includes(q) ||
+        m.kind.includes(q) ||
         (allTagsMap[m.path] &&
-          allTagsMap[m.path].some((t) => t.toLowerCase().includes(q))),
+          allTagsMap[m.path].some((t) => t.toLowerCase().includes(q))) ||
+        (m.name && m.name.toLowerCase().includes(q.replace(/\./g, ""))),
     );
+  }
+
+  // Triage: filtre favoris
+  if (triageState.favFilter === "favs") {
+    filtered = filtered.filter((m) => favorites.includes(m.path));
+  } else if (triageState.favFilter === "non-favs") {
+    filtered = filtered.filter((m) => !favorites.includes(m.path));
+  }
+
+  // Triage: nouveaux tris
+  if (currentSort === "name-desc") {
+    filtered = [...filtered].sort((a, b) => b.name.localeCompare(a.name));
+  } else if (currentSort === "date") {
+    filtered = [...filtered].sort((a, b) => {
+      const ta = a.path.match(/_(\d+)\./)?.[1] || 0;
+      const tb = b.path.match(/_(\d+)\./)?.[1] || 0;
+      return Number(tb) - Number(ta);
+    });
+  } else if (currentSort === "date-desc") {
+    filtered = [...filtered].sort((a, b) => {
+      const ta = a.path.match(/_(\d+)\./)?.[1] || 0;
+      const tb = b.path.match(/_(\d+)\./)?.[1] || 0;
+      return Number(ta) - Number(tb);
+    });
+  } else if (currentSort === "favorites") {
+    filtered = [...filtered].sort((a, b) => {
+      const af = favorites.includes(a.path) ? 1 : 0;
+      const bf = favorites.includes(b.path) ? 1 : 0;
+      return bf - af;
+    });
   }
 
   // Clear grid
@@ -554,6 +621,23 @@ async function renderGrid() {
           }
           el.loading = "lazy";
           card.appendChild(el);
+        } else if (meme.kind === "video" || meme.kind === "gif") {
+          // Fallback: utiliser le chemin local directement (Twitter/X, etc.)
+          const fallbackUrl = `file:///${encodeURI(meme.path.replace(/\\/g, "/"))}`;
+          const el =
+            meme.kind === "video"
+              ? document.createElement("video")
+              : document.createElement("img");
+          el.src = fallbackUrl;
+          // Supprimer les erreurs de chargement silencieusement
+          el.onerror = function() { this.style.display = "none"; };
+          if (meme.kind === "video") {
+            el.muted = true;
+            el.loop = true;
+          }
+          el.loading = "lazy";
+          el.style.opacity = "0.8";
+          card.appendChild(el);
         }
       } catch (e) {
         // silent
@@ -564,6 +648,8 @@ async function renderGrid() {
     const name = document.createElement("div");
     name.className = "meme-card-name";
     name.textContent = meme.name;
+    // Empêcher le clic sur le nom d'ouvrir le panel (laisse le double-clic renommer)
+    name.addEventListener("click", (e) => e.stopPropagation());
     // Double-click to rename
     name.addEventListener("dblclick", async (e) => {
       e.stopPropagation();
@@ -643,10 +729,32 @@ async function renderGrid() {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         toggleSelection(meme.path);
+        lastClickedIndex = filtered.indexOf(meme);
         return;
       }
+      // Shift+Click sélectionne une plage
+      if (e.shiftKey && lastClickedIndex >= 0) {
+        e.preventDefault();
+        const currentIndex = filtered.indexOf(meme);
+        const start = Math.min(lastClickedIndex, currentIndex);
+        const end = Math.max(lastClickedIndex, currentIndex);
+        for (let i = start; i <= end; i++) {
+          selectedPaths.add(filtered[i].path);
+        }
+        updateSelectionUI();
+        return;
+      }
+      lastClickedIndex = filtered.indexOf(meme);
       openDropPanel(meme);
     });
+
+    // Right-click → context menu
+    card.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showContextMenu(meme, e.clientX, e.clientY);
+    });
+    if (captionBelow) card.classList.add("caption-below");
     fragment.appendChild(card);
   }
 
@@ -679,6 +787,20 @@ document.querySelectorAll(".filter-btn").forEach((btn) => {
 
 // ── Toolbar buttons ─────────────────────────────────────────────────────
 document.getElementById("btn-refresh")?.addEventListener("click", loadMemes);
+document.getElementById("btn-sync-library")?.addEventListener("click", async () => {
+  if (!window.memedrop.syncAllMemes) return toast("Sync non disponible", "error");
+  toast("📤 Synchronisation de la bibliothèque…");
+  const r = await window.memedrop.syncAllMemes(true);
+  if (r && r.ok) toast(`📤 ${r.count} meme(s) partagé(s)`);
+  else toast("❌ Sync échoué", "error");
+});
+document.getElementById("btn-download-all")?.addEventListener("click", async () => {
+  if (!window.memedrop.requestLibrarySync) return toast("Fonction non disponible", "error");
+  toast("📥 Demande de synchronisation envoyée…");
+  const r = await window.memedrop.requestLibrarySync();
+  if (r && r.ok) toast(`📥 Demande envoyée, les autres vont t'envoyer leurs memes`);
+  else toast("❌ Échec de la demande", "error");
+});
 document
   .getElementById("btn-open-folder")
   ?.addEventListener("click", () => window.memedrop.openMemeFolder());
@@ -691,6 +813,7 @@ document
       allMemes.unshift(result);
       renderGrid();
       toast("📋 Image collée depuis le presse-papier");
+      window.memedrop.syncMeme(result).catch(() => {});
     } else {
       toast("Aucune image dans le presse-papier", "error");
     }
@@ -699,20 +822,183 @@ document
 document
   .getElementById("btn-screenshot")
   ?.addEventListener("click", async () => {
-    toast("📷 Capture d'écran en cours…");
+    toast("\uD83D\uDCF7 Capture d'\u00E9cran en cours\u2026");
     const result = await window.memedrop.captureScreenshot();
     if (result && result.path) {
       allMemes.unshift(result);
       renderGrid();
       toast("📷 Capture ajoutée !");
+      window.memedrop.syncMeme(result).catch(() => {});
     } else {
-      toast("Capture annulée", "error");
+      toast("Capture annul\u00E9e", "error");
     }
   });
+
+document
+  .getElementById("btn-blacklist")
+  ?.addEventListener("click", async () => {
+    await openBlacklistModal();
+  });
+
+async function updateBlacklistBadge() {
+  try {
+    const hidden = await window.memedrop.listHiddenMemes();
+    const btn = document.getElementById("btn-blacklist");
+    if (btn) {
+      const count = hidden ? hidden.length : 0;
+      btn.textContent = count > 0 ? "🚫 " + count : "🚫 Blacklist";
+      btn.title = count > 0 ? count + " meme(s) caché(s)" : "Gérer les memes cachés";
+    }
+  } catch {}
+}
+
+async function openBlacklistModal() {
+  const modal = document.getElementById("blacklist-modal");
+  if (!modal) return;
+
+  const hidden = await window.memedrop.listHiddenMemes();
+  const listEl = document.getElementById("blacklist-list");
+  if (!listEl) return;
+
+  modal.classList.remove("hidden");
+
+  if (!hidden || hidden.length === 0) {
+    listEl.innerHTML = '<div class="blacklist-empty">✅ Aucun meme dans la blacklist</div>';
+    return;
+  }
+
+  listEl.innerHTML = "";
+  for (const meme of hidden) {
+    const item = document.createElement("div");
+    item.className = "blacklist-item";
+
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = meme.name;
+
+    // Preview thumbnail
+    const preview = document.createElement("img");
+    preview.src = "file:///" + meme.path.replace(/\\/g, "/");
+    preview.style.cssText = "width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0;background:var(--bg-card)";
+    preview.loading = "lazy";
+    item.insertBefore(preview, name);
+
+    const restoreBtn = document.createElement("button");
+    restoreBtn.className = "restore-btn";
+    restoreBtn.textContent = "♻️";
+    restoreBtn.title = "Restaurer ce meme";
+    restoreBtn.addEventListener("click", async () => {
+      await window.memedrop.restoreMeme(meme.path);
+      await openBlacklistModal(); // Refresh
+      await loadMemes();
+      toast(`♻️ "${meme.name}" restauré`);
+      updateBlacklistBadge();
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "delete-btn";
+    deleteBtn.textContent = "✕";
+    deleteBtn.title = "Supprimer définitivement de la blacklist";
+    deleteBtn.addEventListener("click", async () => {
+      await window.memedrop.restoreMeme(meme.path);
+      // Aussi supprimer le fichier si il existe encore
+      await openBlacklistModal(); // Refresh
+      toast(`🗑️ "${meme.name}" retiré de la blacklist`);
+    });
+
+    item.appendChild(name);
+    item.appendChild(restoreBtn);
+    item.appendChild(deleteBtn);
+    listEl.appendChild(item);
+  }
+}
+
+// Fermeture blacklist modal
+document.getElementById("btn-blacklist-close")?.addEventListener("click", () => {
+  document.getElementById("blacklist-modal")?.classList.add("hidden");
+});
+document.getElementById("blacklist-modal-close")?.addEventListener("click", () => {
+  document.getElementById("blacklist-modal")?.classList.add("hidden");
+});
+
+// Restaurer tout
+document.getElementById("btn-blacklist-restore-all")?.addEventListener("click", async () => {
+  const hidden = await window.memedrop.listHiddenMemes();
+  if (!hidden || hidden.length === 0) return;
+  for (const m of hidden) {
+    await window.memedrop.restoreMeme(m.path);
+  }
+  await loadMemes();
+  document.getElementById("blacklist-modal")?.classList.add("hidden");
+  toast(`♻️ ${hidden.length} meme(s) restauré(s)`);
+});
+
+// Vider toute la blacklist (supprime définitivement)
+document.getElementById("btn-blacklist-clear-all")?.addEventListener("click", async () => {
+  const hidden = await window.memedrop.listHiddenMemes();
+  if (!hidden || hidden.length === 0) return;
+  if (!confirm(`Supprimer définitivement les ${hidden.length} fichier(s) de la blacklist ?`)) return;
+  for (const m of hidden) {
+    await window.memedrop.restoreMeme(m.path);
+  }
+  await loadMemes();
+  document.getElementById("blacklist-modal")?.classList.add("hidden");
+  toast(`🗑️ ${hidden.length} meme(s) retiré(s) de la blacklist`);
+});
+
+// Escape key pour fermer la blacklist
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    const modal = document.getElementById("blacklist-modal");
+    if (modal && !modal.classList.contains("hidden")) {
+      modal.classList.add("hidden");
+      e.preventDefault();
+    }
+  }
+});
 
 // ── Section P: Side panel toggle ───────────────────────────────────────
 document.getElementById("btn-side-panel")?.addEventListener("click", () => {
   sidePanel.classList.toggle("hidden");
+});
+
+// ── Help Modal ──────────────────────────────────────────────────
+document.getElementById("btn-help")?.addEventListener("click", () => {
+  document.getElementById("help-modal")?.classList.remove("hidden");
+});
+document.getElementById("btn-help-close")?.addEventListener("click", () => {
+  document.getElementById("help-modal")?.classList.add("hidden");
+});
+document.getElementById("help-modal-close")?.addEventListener("click", () => {
+  document.getElementById("help-modal")?.classList.add("hidden");
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    const modal = document.getElementById("help-modal");
+    if (modal && !modal.classList.contains("hidden")) {
+      modal.classList.add("hidden");
+      e.preventDefault();
+    }
+  }
+});
+
+// ── Raccourcis clavier ────────────────────────────────────────
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+    e.preventDefault();
+    const search = document.getElementById("search");
+    if (search) search.focus();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "t") {
+    e.preventDefault();
+    const advanced = document.getElementById("triage-advanced");
+    if (advanced) advanced.classList.toggle("hidden");
+  }
+  // Ctrl+Shift+L → renvoyer le dernier drop
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "l" || e.key === "L")) {
+    e.preventDefault();
+    handleResend();
+  }
 });
 
 // ── Section B: Tags ────────────────────────────────────────────────────
@@ -730,6 +1016,41 @@ async function loadTags() {
 function renderTags() {
   if (!tagList) return;
   tagList.innerHTML = "";
+
+  // Afficher les tags du meme sélectionné (avec ✕ pour supprimer)
+  if (selectedMeme) {
+    const memeTags = selectedMeme.tags || [];
+    if (memeTags.length > 0) {
+      const header = document.createElement("div");
+      header.style.cssText = "font-size:10px;color:var(--text-dim);margin-bottom:4px";
+      header.textContent = "Tags de " + selectedMeme.name + " :";
+      tagList.appendChild(header);
+
+      for (const tag of memeTags) {
+        const pill = document.createElement("span");
+        pill.className = "tag-pill tag-pill-meme";
+        pill.textContent = tag + " ✕";
+        pill.title = "Retirer le tag \"" + tag + "\"";
+        pill.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const currentTags = selectedMeme.tags || [];
+          const updated = currentTags.filter((t) => t !== tag);
+          await window.memedrop.setTags(selectedMeme.path, updated);
+          selectedMeme.tags = updated;
+          await loadTags();
+          renderGrid();
+          toast("🏷️ Tag \"" + tag + "\" retiré");
+        });
+        tagList.appendChild(pill);
+      }
+
+      const sep = document.createElement("div");
+      sep.style.cssText = "height:1px;background:var(--border);margin:8px 0";
+      tagList.appendChild(sep);
+    }
+  }
+
+  // Filtre actif
   if (activeTagFilter) {
     const clear = document.createElement("span");
     clear.className = "tag-pill";
@@ -741,6 +1062,8 @@ function renderTags() {
     });
     tagList.appendChild(clear);
   }
+
+  // Tous les tags (filtre global)
   for (const tag of allTags) {
     const pill = document.createElement("span");
     pill.className = "tag-pill" + (activeTagFilter === tag ? " active" : "");
@@ -959,9 +1282,19 @@ function playAudio(path) {
       return;
     }
     window.memedrop
-      .getAudioPreview(path)
+      .getPreview(path, "audio")
       .then((previewUrl) => {
-        if (!previewUrl) return;
+        if (!previewUrl) {
+          // Fallback: construire l'URL nous-mêmes
+          const fallbackUrl = `file:///${path.replace(/\\/g, "/")}`;
+          const audio = new Audio(fallbackUrl);
+          audioElements[path] = audio;
+          audio.play().catch(() => {});
+          audio.addEventListener("ended", () => {
+            delete audioElements[path];
+          });
+          return;
+        }
         const audio = new Audio(previewUrl);
         audioElements[path] = audio;
         audio.play().catch(() => {});
@@ -969,10 +1302,173 @@ function playAudio(path) {
           delete audioElements[path];
         });
       })
-      .catch(() => {});
+      .catch(() => {
+        // Ultimate fallback
+        const fallbackUrl = `file:///${path.replace(/\\/g, "/")}`;
+        const audio = new Audio(fallbackUrl);
+        audioElements[path] = audio;
+        audio.play().catch(() => {});
+      });
   } catch (e) {
     // silent
   }
+}
+
+// ── Context Menu ────────────────────────────────────────────────
+function showContextMenu(meme, x, y) {
+  closeContextMenu();
+
+  const menu = document.createElement("div");
+  menu.id = "meme-context-menu";
+  menu.className = "context-menu";
+  menu.style.left = x + "px";
+  menu.style.top = y + "px";
+
+  const items = [];
+
+  if (meme.kind === "audio") {
+    items.push({
+      label: "🔊 Play Audio",
+      action: () => {
+        playAudio(meme.path);
+        toast(`🎵 "${meme.name}" en lecture`);
+      },
+    });
+  } else if (meme.kind === "video") {
+    items.push({
+      label: "🎬 Preview Video",
+      action: () => {
+        toast(`🎬 "${meme.name}"`);
+      },
+    });
+  }
+
+  items.push({
+    label: "✏️ Rename",
+    action: () => {
+      startRename(meme);
+    },
+  });
+
+  items.push({
+    label: "⭐ Add to Favorites",
+    action: async () => {
+      const newFavs = await window.memedrop.toggleFavorite(meme.path, {
+        name: meme.name,
+        kind: meme.kind,
+      });
+      favorites = newFavs.map((f) => f.path);
+      renderFavorites();
+      renderGrid();
+      toast(
+        favorites.includes(meme.path)
+          ? "⭐ Ajouté aux favoris"
+          : "☆ Retiré des favoris",
+      );
+    },
+  });
+
+  items.push({
+    label: "🗑 Hide",
+    action: async () => {
+      await window.memedrop.deleteMemes([meme.path]);
+      allMemes = allMemes.filter((m) => m.path !== meme.path);
+      renderGrid();
+      toast(`🗑 "${meme.name}" caché`);
+    },
+  });
+
+  items.push({
+    label: "🚫 Blacklist",
+    action: async () => {
+      await window.memedrop.deleteMemes([meme.path]);
+      allMemes = allMemes.filter((m) => m.path !== meme.path);
+      renderGrid();
+      toast(`🚫 "${meme.name}" blacklisté (ne sera pas réimporté)`);
+    },
+  });
+
+  items.push({
+    label: "📤 Send",
+    action: () => {
+      closeContextMenu();
+      openDropPanel(meme);
+    },
+  });
+
+  items.forEach((item) => {
+    const btn = document.createElement("button");
+    btn.className = "context-menu-item";
+    btn.textContent = item.label;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeContextMenu();
+      item.action();
+    });
+    menu.appendChild(btn);
+  });
+
+  document.body.appendChild(menu);
+}
+
+function closeContextMenu() {
+  const old = document.getElementById("meme-context-menu");
+  if (old) old.remove();
+}
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#meme-context-menu")) {
+    closeContextMenu();
+  }
+});
+
+// ── Rename helper (depuis le context menu) ────────────────────────
+function startRename(meme) {
+  closeContextMenu();
+  const card = document.querySelector(
+    `.meme-card[data-path="${CSS.escape(meme.path)}"]`,
+  );
+  if (!card) return;
+  const nameEl = card.querySelector(".meme-card-name");
+  if (!nameEl) return;
+
+  const input = document.createElement("input");
+  input.className = "input";
+  input.value = meme.name;
+  input.style.cssText =
+    "width:100%;font-size:10px;padding:2px 4px;position:absolute;bottom:0;left:0;right:0;z-index:10;";
+  nameEl.textContent = "";
+  nameEl.appendChild(input);
+  input.focus();
+  input.select();
+
+  const save = async () => {
+    const newName = input.value.trim();
+    if (newName && newName !== meme.name) {
+      const result = await window.memedrop.renameMeme(meme.path, newName);
+      if (result && result.ok) {
+        meme.name = newName;
+        meme.path = result.path;
+        renderGrid();
+        toast(`✏️ Renommé en ${newName}`);
+      } else {
+        toast("Erreur de renommage", "error");
+      }
+    } else {
+      nameEl.textContent = meme.name;
+    }
+  };
+
+  input.addEventListener("blur", save);
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      input.blur();
+    }
+    if (ev.key === "Escape") {
+      nameEl.textContent = meme.name;
+    }
+  });
 }
 
 // ── Section F: Audio Pairing + Volume in Drop Panel ─────────────────────
@@ -984,8 +1480,22 @@ async function renderAudioSelect(selectedPath) {
     opt.value = audio.path;
     opt.textContent = audio.name;
     if (audio.path === selectedPath) opt.selected = true;
+    // Ajouter la durée de manière asynchrone
     panelAudioSelect.appendChild(opt);
   }
+  // Récupérer les durées en parallèle
+  const promises = [];
+  for (const opt of panelAudioSelect.options) {
+    if (!opt.value) continue;
+    promises.push(
+      window.memedrop.getAudioDuration(opt.value).then(function(info) {
+        if (info && info.label !== "?") {
+          opt.textContent = opt.textContent + " (" + info.label + ")";
+        }
+      }).catch(function() {})
+    );
+  }
+  await Promise.all(promises);
 }
 
 // Section G: Volume
@@ -998,8 +1508,41 @@ const panelDuration = document.getElementById("panel-duration");
 const panelDurationOut = document.getElementById("panel-duration-out");
 panelDuration?.addEventListener("input", () => {
   currentDuration = parseInt(panelDuration.value, 10) || 4;
-  if (panelDurationOut) panelDurationOut.textContent = `${currentDuration}s`;
+  if (panelDurationOut) panelDurationOut.textContent = currentDuration + "s";
 });
+
+// Sync audio checkbox → désactiver le slider durée
+const syncAudioCb = document.getElementById("panel-sync-audio-duration");
+if (syncAudioCb && panelDuration && panelDurationOut) {
+  syncAudioCb.addEventListener("change", async function() {
+    panelDuration.disabled = this.checked;
+    if (this.checked && panelAudioSelect && panelAudioSelect.value) {
+      try {
+        const info = await window.memedrop.getAudioDuration(panelAudioSelect.value);
+        if (info && info.label) {
+          panelDurationOut.textContent = info.label + " (sync)";
+        } else {
+          panelDurationOut.textContent = "10s (sync)";
+        }
+      } catch {
+        panelDurationOut.textContent = "10s (sync)";
+      }
+    } else {
+      panelDurationOut.textContent = currentDuration + "s";
+    }
+  });
+  // Also update when audio selection changes
+  panelAudioSelect?.addEventListener("change", async function() {
+    if (syncAudioCb.checked && this.value) {
+      try {
+        const info = await window.memedrop.getAudioDuration(this.value);
+        if (info && info.label) {
+          panelDurationOut.textContent = info.label + " (sync)";
+        }
+      } catch {}
+    }
+  });
+}
 
 // ── Section H: History ─────────────────────────────────────────────────
 async function loadHistory() {
@@ -1060,6 +1603,7 @@ if (grid) {
         const result = await window.memedrop.saveFromFile(file.path);
         if (result) {
           allMemes.unshift(result);
+          window.memedrop.syncMeme(result).catch(() => {});
           imported++;
         }
       } catch {}
@@ -1131,6 +1675,8 @@ async function openDropPanel(meme) {
   panelCaption.value = "";
   panelRain.value = "";
   panelStatus.textContent = "";
+  // Restaurer la liste des templates de caption
+  renderCaptionTemplates();
   panelStatus.className = "panel-status";
 
   // Section B: Load tags for this meme
@@ -1251,7 +1797,8 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
   const volume = currentVolume;
 
   // Send to all selected targets
-  let successCount = 0;
+  let successList = [];
+  let failList = [];
   let lastTarget = "";
   const localPreview =
     document.getElementById("panel-local-preview")?.checked ?? true;
@@ -1262,6 +1809,7 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
       result = await window.memedrop.sendDropUrl({
         target,
         url: selectedMeme.url,
+        audioPath,
         caption,
         rain,
         kind: selectedMeme.kind,
@@ -1283,6 +1831,21 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
       }
       result = { ok: sentCount > 0, count: sentCount };
     } else {
+      const syncDuration = document.getElementById("panel-sync-audio-duration")?.checked;
+      let effectiveDuration = currentDuration;
+      if (syncDuration && audioPath) {
+        try {
+          const info = await window.memedrop.getAudioDuration(audioPath);
+          if (info && info.duration > 0) {
+            effectiveDuration = info.duration; // Durée réelle de l'audio
+          } else {
+            effectiveDuration = 10; // fallback
+          }
+        } catch {
+          effectiveDuration = 10;
+        }
+      }
+      const captionBelow = document.getElementById("panel-caption-below")?.checked || false;
       result = await window.memedrop.sendDrop({
         target,
         filePath: selectedMeme.path,
@@ -1291,28 +1854,38 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
         rain,
         kind: selectedMeme.kind,
         volume,
-        duration: currentDuration,
+        duration: effectiveDuration,
         showLocalPreview: idx === 0 ? localPreview : false,
+        captionBelow,
       });
     }
 
     if (result && result.ok) {
-      successCount++;
+      successList.push(target);
       await window.memedrop.addTarget(target);
       await window.memedrop.addHistory({
         target,
         name: selectedMeme.name,
         ts: Date.now(),
       });
+    } else {
+      failList.push(target);
     }
   }
 
   sendBtn.disabled = false;
   sendBtn.textContent = "🚀 Envoyer";
 
-  if (successCount > 0) {
-    panelStatus.textContent = `✅ Drop envoyé à ${successCount}/${targets.length} cible(s)`;
-    panelStatus.className = "panel-status success";
+  if (targets.length > 0) {
+    panelStatus.className = failList.length === targets.length ? "panel-status error" : "panel-status success";
+    if (successList.length > 0 && failList.length > 0) {
+      panelStatus.textContent = "✅ " + successList.length + "/" + targets.length + " — " + failList.join(", ") + " ❌";
+      panelStatus.title = "Reçu: " + successList.join(", ") + "\nÉchec: " + failList.join(", ");
+    } else if (failList.length === 0) {
+      panelStatus.textContent = "✅ Envoyé à " + successList.join(", ");
+    } else {
+      panelStatus.textContent = "❌ Échec: " + failList.join(", ");
+    }
 
     // Section F: Persist audio pairing if selected
     if (audioPath) {
@@ -1421,6 +1994,51 @@ async function handleResend() {
   } catch (e) {
     toast("Erreur lors du renvoi", "error");
   }
+}
+
+// ── Caption Templates ────────────────────────────────────────────
+let captionTemplates = [];
+try {
+  captionTemplates = JSON.parse(localStorage.getItem("memedrop_captions") || "[]");
+} catch {}
+
+function renderCaptionTemplates() {
+  const sel = document.getElementById("caption-templates");
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Messages sauvegardés...</option>';
+  for (const c of captionTemplates) {
+    const opt = document.createElement("option");
+    opt.value = c;
+    opt.textContent = c.length > 40 ? c.substring(0, 40) + "…" : c;
+    sel.appendChild(opt);
+  }
+}
+
+document.getElementById("btn-save-caption")?.addEventListener("click", () => {
+  const val = panelCaption?.value?.trim();
+  if (!val) return toast("Écris d'abord un message", "error");
+  if (captionTemplates.includes(val)) return toast("Message déjà sauvegardé", "error");
+  captionTemplates.push(val);
+  localStorage.setItem("memedrop_captions", JSON.stringify(captionTemplates));
+  renderCaptionTemplates();
+  toast("💾 Message sauvegardé");
+});
+
+document.getElementById("caption-templates")?.addEventListener("change", (e) => {
+  const val = e.target.value;
+  if (val && panelCaption) panelCaption.value = val;
+});
+
+// ── Character counter for caption ─────────────────────────────────
+if (panelCaption) {
+  panelCaption.addEventListener("input", () => {
+    const counter = document.getElementById("caption-char-count");
+    if (counter) {
+      const len = panelCaption.value.length;
+      counter.textContent = len + "/80";
+      counter.style.color = len > 80 ? "#ff5e8a" : "var(--text-dim)";
+    }
+  });
 }
 
 async function triggerScreenshot() {
@@ -1555,7 +2173,7 @@ btnStudioGenerate?.addEventListener("click", async () => {
 let giphyOffset = 0;
 let giphyQuery = null;
 let giphyHasMore = true;
-const GIPHY_LIMIT = 24;
+const GIPHY_LIMIT = 50;
 
 async function loadGiphy(query, reset = true) {
   if (isGiphyLoading) return;
@@ -1636,9 +2254,9 @@ giphyGrid?.addEventListener("scroll", () => {
 
 function appendGiphyGrid(items) {
   if (!giphyGrid) return;
-  // Remove "loading..." indicator if present
-  const loadingEl = giphyGrid.querySelector(".giphy-loading");
-  if (loadingEl) loadingEl.remove();
+  // Remove button first, will re-add if needed
+  const existingBtn = giphyGrid.querySelector(".giphy-load-more");
+  if (existingBtn) existingBtn.remove();
 
   for (const gif of items) {
     const item = createGiphyItem(gif);
@@ -1652,6 +2270,20 @@ function appendGiphyGrid(items) {
       "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:11px;padding:8px";
     end.textContent = "— Plus de résultats —";
     giphyGrid.appendChild(end);
+  } else {
+    // Re-add the load more button
+    const btn = document.createElement("button");
+    btn.className = "giphy-load-more";
+    btn.textContent = "⬇ Afficher plus";
+    btn.style.cssText =
+      "grid-column:1/-1;justify-self:center;padding:8px 20px;margin:12px;border:none;border-radius:var(--radius-sm);background:var(--bg-hover);color:var(--text);font-size:12px;cursor:pointer;font-weight:600";
+    btn.addEventListener("click", () => {
+      btn.textContent = "Chargement…";
+      btn.disabled = true;
+      giphyOffset += GIPHY_LIMIT;
+      loadGiphy(giphyQuery, false);
+    });
+    giphyGrid.appendChild(btn);
   }
 }
 
@@ -1663,22 +2295,17 @@ function createGiphyItem(gif) {
   const gifUrl =
     gif?.images?.fixed_height?.url || gif?.images?.original?.url || "";
   if (!gifUrl) return null; // Skip invalid GIFs
-  (async () => {
-    try {
-      const dataUrl = await window.memedrop.fetchAsDataUrl(gifUrl);
-      if (dataUrl) {
-        img.src = dataUrl;
-      } else {
-        // Fallback: try direct URL (might be blocked by CSP)
-        img.src = gifUrl;
-      }
-    } catch {
-      // Direct URL as last resort
-      img.src = gifUrl;
-    }
-  })();
+  img.src = gifUrl; // Load directly (CSP doesn't block img.src in Electron)
+  // Also try fetchAsDataUrl for better reliability (runs async, won't override if already set)
+  window.memedrop
+    .fetchAsDataUrl(gifUrl)
+    .then((dataUrl) => {
+      if (dataUrl) img.src = dataUrl;
+    })
+    .catch(() => {});
   img.loading = "lazy";
   img.alt = gif.title || "GIF";
+  item.appendChild(img);
   // Progress bar for download
   const progress = document.createElement("div");
   progress.className = "giphy-progress";
@@ -1710,6 +2337,7 @@ function createGiphyItem(gif) {
         renderGrid();
         openDropPanel(downloaded);
         toast("🌐 GIF importé !");
+        window.memedrop.syncMeme(downloaded).catch(() => {});
       } else {
         toast("Erreur d'import GIF", "error");
       }
@@ -1740,13 +2368,33 @@ function renderGiphyGrid(items) {
     if (item) giphyGrid.appendChild(item);
   }
   if (items.length >= GIPHY_LIMIT) {
-    const loader = document.createElement("p");
-    loader.className = "giphy-loading";
-    loader.style.cssText =
-      "grid-column:1/-1;text-align:center;color:var(--text-dim);font-size:12px;padding:12px";
-    loader.textContent = "⬇ Scrollez pour plus de résultats";
-    giphyGrid.appendChild(loader);
+    const loadMore = document.createElement("button");
+    loadMore.className = "giphy-load-more";
+    loadMore.textContent = "⬇ Afficher plus";
+    loadMore.style.cssText =
+      "grid-column:1/-1;justify-self:center;padding:8px 20px;margin:12px;border:none;border-radius:var(--radius-sm);background:var(--bg-hover);color:var(--text);font-size:12px;cursor:pointer;font-weight:600";
+    loadMore.addEventListener("click", () => {
+      loadMore.textContent = "Chargement…";
+      loadMore.disabled = true;
+      giphyOffset += GIPHY_LIMIT;
+      loadGiphy(giphyQuery, false);
+    });
+    giphyGrid.appendChild(loadMore);
   }
+}
+
+function autoLoadMoreGiphy() {
+  if (!giphyGrid || isGiphyLoading || !giphyHasMore) return;
+  // Small delay to let DOM settle
+  setTimeout(() => {
+    const scrollH = giphyGrid.scrollHeight;
+    const clientH = giphyGrid.clientHeight;
+    // If content is smaller than container or within 50px of filling, load more
+    if (scrollH <= clientH + 50 && giphyHasMore) {
+      giphyOffset += GIPHY_LIMIT;
+      loadGiphy(giphyQuery, false);
+    }
+  }, 100);
 }
 
 // ── Section M: Groups ─────────────────────────────────────────────────
@@ -1777,19 +2425,31 @@ document.getElementById("btn-clear-targets")?.addEventListener("click", () => {
   if (sel) sel.selectedIndex = -1;
 });
 
-// ── Custom targets ────────────────────────────────────────────────────────
+// ── Custom targets + hidden targets ──────────────────────────────
 let customTargets = new Set();
+let hiddenTargets = new Set();
 try {
   const saved = JSON.parse(
     localStorage.getItem("memedrop_custom_targets") || "[]",
   );
   customTargets = new Set(saved);
+  const hidden = JSON.parse(
+    localStorage.getItem("memedrop_hidden_targets") || "[]",
+  );
+  hiddenTargets = new Set(hidden);
 } catch {}
 
 function saveCustomTargets() {
   localStorage.setItem(
     "memedrop_custom_targets",
     JSON.stringify([...customTargets]),
+  );
+}
+
+function saveHiddenTargets() {
+  localStorage.setItem(
+    "memedrop_hidden_targets",
+    JSON.stringify([...hiddenTargets]),
   );
 }
 
@@ -1820,6 +2480,30 @@ function addCustomTarget() {
 addTargetBtn?.addEventListener("click", addCustomTarget);
 panelTargetAdd?.addEventListener("keydown", (e) => {
   if (e.key === "Enter") addCustomTarget();
+});
+
+// Remove selected target (custom, Discord ou recent)
+document.getElementById("btn-remove-target")?.addEventListener("click", () => {
+  if (!panelTarget) return;
+  const selected = Array.from(panelTarget.selectedOptions).map((o) => o.value.trim());
+  if (selected.length === 0) {
+    toast("Sélectionne une cible à retirer", "error");
+    return;
+  }
+  for (const val of selected) {
+    // Retirer des cibles personnalisées si présent
+    if (customTargets.has(val)) {
+      customTargets.delete(val);
+    }
+    // Ajouter aux cibles masquées (Discord, recent ou custom)
+    hiddenTargets.add(val);
+    // Retirer l'option du select
+    const opt = Array.from(panelTarget.options).find((o) => o.value === val);
+    if (opt) panelTarget.removeChild(opt);
+  }
+  saveCustomTargets();
+  saveHiddenTargets();
+  toast(`✕ ${selected.length} cible(s) retirée(s)`);
 });
 
 btnSaveGroup?.addEventListener("click", async () => {
@@ -1966,10 +2650,176 @@ function renderScheduled() {
   }
 }
 
-// ── Section Q: File watcher ────────────────────────────────────────────
-async function setupFileWatcher() {
+// ── Triage Panel ──────────────────────────────────────────────────
+function initTriagePanel() {
+  // Type filters — multi-select toggle
+  document.querySelectorAll(".triage-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const filter = btn.dataset.filter;
+      const allBtn = document.querySelector('[data-filter="all"]');
+
+      if (filter === "all") {
+        // "Tous" désactive tous les filtres spécifiques
+        triageState.typeFilters = [];
+        document.querySelectorAll(".triage-btn").forEach((b) => {
+          b.classList.toggle("active", b.dataset.filter === "all");
+        });
+      } else {
+        // Désactiver "Tous" si actif
+        if (allBtn) allBtn.classList.remove("active");
+        // Toggle le bouton cliqué
+        btn.classList.toggle("active");
+        // Mettre à jour le state
+        const activeTypes = [];
+        document.querySelectorAll(".triage-btn[data-filter]").forEach((b) => {
+          if (b.dataset.filter !== "all" && b.classList.contains("active")) {
+            activeTypes.push(b.dataset.filter);
+          }
+        });
+        triageState.typeFilters = activeTypes;
+        // Si aucun type spécifique sélectionné, réactiver "Tous"
+        if (activeTypes.length === 0 && allBtn) {
+          allBtn.classList.add("active");
+        }
+      }
+      applyTriage();
+    });
+  });
+
+  // Toggle advanced filters
+  document
+    .getElementById("btn-toggle-triage-advanced")
+    ?.addEventListener("click", () => {
+      document.getElementById("triage-advanced")?.classList.toggle("hidden");
+    });
+
+  // Tag select — refresh options when tags change
+  function refreshTagOptions() {
+    const tagSelect = document.getElementById("triage-tag-select");
+    if (!tagSelect) return;
+    const tags = [...new Set(Object.values(allTagsMap).flat())];
+    tagSelect.innerHTML = tags
+      .map((t) => `<option value="${t}">${t}</option>`)
+      .join("");
+  }
+
+  // Refresh tags after loadTags completes
+  const origLoadTags = loadTags;
+  loadTags = async function () {
+    await origLoadTags.call(this);
+    refreshTagOptions();
+  };
+
+  document
+    .getElementById("triage-tag-select")
+    ?.addEventListener("change", (e) => {
+      const selected = [...e.target.selectedOptions].map((o) => o.value);
+      triageState.tag = selected.length === 1 ? selected[0] : null;
+    });
+
+  document
+    .getElementById("triage-fav-select")
+    ?.addEventListener("change", (e) => {
+      triageState.favFilter = e.target.value;
+      applyTriage();
+    });
+
+  document
+    .getElementById("triage-sort-select")
+    ?.addEventListener("change", (e) => {
+      triageState.sort = e.target.value;
+      applyTriage();
+    });
+
+  document.getElementById("triage-search")?.addEventListener("input", (e) => {
+    triageState.query = e.target.value;
+  });
+
+  document
+    .getElementById("btn-apply-triage")
+    ?.addEventListener("click", applyTriage);
+  document.getElementById("btn-reset-triage")?.addEventListener("click", () => {
+    triageState.typeFilters = [];
+    triageState.tag = null;
+    triageState.favFilter = "all";
+    triageState.sort = "name";
+    triageState.query = "";
+    const searchEl = document.getElementById("triage-search");
+    if (searchEl) searchEl.value = "";
+    document.querySelectorAll(".triage-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.filter === "all");
+    });
+    applyTriage();
+  });
+
+  // Mettre à jour le compteur
+  updateTriageCount();
+}
+
+function applyTriage() {
+  // Appliquer les filtres
+  const types = triageState.typeFilters;
+  currentFilter = types.length === 0 ? "all" : "multi";
+  activeTagFilter = triageState.tag;
+  currentSort = triageState.sort;
+  currentQuery = triageState.query;
+  renderGrid();
+  updateTriageCount();
+
+  // Persister les préférences de triage
+  saveTriageState();
+}
+
+// ── Persistance du triage ──────────────────────────────────────
+function saveTriageState() {
   try {
-    const unsub = window.memedrop.onLibraryChanged(() => {
+    window.memedrop
+      .updateSettings({ triageState: { ...triageState } })
+      .catch(() => {});
+  } catch {
+    /* best-effort */
+  }
+}
+
+async function loadTriageState() {
+  try {
+    const settings = await window.memedrop.getSettings();
+    const saved = settings.triageState;
+    if (saved) {
+      Object.assign(triageState, saved);
+    }
+  } catch (e) {
+    console.warn("Could not load triage state:", e);
+  }
+}
+
+function updateTriageCount(filteredCount) {
+  const el = document.getElementById("triage-count");
+  const countEl = document.getElementById("meme-count");
+  if (el) {
+    const total = allMemes ? allMemes.length : 0;
+    // Utiliser filteredCount passé en paramètre, ou le lire depuis le DOM
+    const visible = filteredCount !== undefined ? filteredCount :
+      (countEl ? parseInt(countEl.textContent, 10) || total : total);
+    if (visible !== total) {
+      el.textContent = `${visible} / ${total} memes`;
+    } else {
+      el.textContent = `${total} meme${total > 1 ? "s" : ""}`;
+    }
+  }
+}
+
+// ── Section Q: File watcher ────────────────────────────────────────────
+let unsubLibraryChanged = null;
+let unsubMemeSynced = null;
+
+async function setupFileWatcher() {
+  // Nettoyer les anciens listeners avant d'en créer de nouveaux
+  if (unsubLibraryChanged) unsubLibraryChanged();
+  if (unsubMemeSynced) unsubMemeSynced();
+
+  try {
+    unsubLibraryChanged = window.memedrop.onLibraryChanged(() => {
       loadMemes();
       loadAudioLibrary();
       toast("📂 Bibliothèque mise à jour");
@@ -1977,6 +2827,51 @@ async function setupFileWatcher() {
   } catch (e) {
     console.warn("onLibraryChanged not available", e);
   }
+
+  // ── Meme sync: recevoir les nouveaux memes des autres utilisateurs ────
+  try {
+    unsubMemeSynced = window.memedrop.onMemeSynced(async (meme) => {
+      if (meme.url && !meme.path) {
+        // URL seulement → tenter de downloader localement
+        try {
+          const downloaded = await window.memedrop.downloadUrl(meme.url);
+          if (downloaded) {
+            loadMemes();
+            toast(
+              `📥 "${downloaded.name}" ajouté par ${meme.from?.username || "qqn"}`,
+            );
+          }
+        } catch (e) {
+          console.warn("Could not download synced URL:", e);
+        }
+      } else if (meme.path) {
+        // Fichier déjà sauvegardé par le main process
+        // Recharger depuis le disque pour éviter les incohérences
+        loadMemes();
+        toast(
+          `📥 "${meme.name}" ajouté par ${meme.from?.username || "quelqu'un"}`,
+        );
+      }
+    });
+  } catch (e) {
+    console.warn("onMemeSynced not available", e);
+  }
+
+  // Écouter les demandes de sync des autres utilisateurs
+  // Écouter les demandes de sync des autres utilisateurs (désactivé : manuel seulement)
+  // Décommente pour réactiver :
+  /*
+  try {
+    window.memedrop.onLibrarySyncRequested(() => {
+      console.log("[sync] library sync requested by another user, sending memes...");
+      if (window.memedrop.syncAllMemes) {
+        window.memedrop.syncAllMemes(true).catch(() => {});
+      }
+    });
+  } catch (e) {
+    console.warn("onLibrarySyncRequested not available", e);
+  }
+  */
 }
 
 // ── Collage Mode ────────────────────────────────────────────────────────
@@ -2007,6 +2902,34 @@ document.getElementById("btn-clear-collage")?.addEventListener("click", () => {
   document
     .querySelectorAll(".selected-collage")
     .forEach((el) => el.classList.remove("selected-collage"));
+});
+
+// ── Random Drop ────────────────────────────────────────────────
+document.getElementById("btn-random-drop")?.addEventListener("click", () => {
+  if (!allMemes || allMemes.length === 0) return toast("Aucun meme à drop", "error");
+  const randomMeme = allMemes[Math.floor(Math.random() * allMemes.length)];
+  openDropPanel(randomMeme);
+  toast(`🎲 Drop aléatoire : ${randomMeme.name}`);
+});
+
+// ── View toggle (grid/list) ────────────────────────────────────────
+let listViewMode = false;
+document.getElementById("btn-view-toggle")?.addEventListener("click", () => {
+  listViewMode = !listViewMode;
+  document.getElementById("btn-view-toggle").textContent = listViewMode ? "📄" : "📋";
+  document.getElementById("grid").classList.toggle("list-view", listViewMode);
+  toast(listViewMode ? "📄 Vue liste" : "📋 Vue grille");
+});
+
+// ── Caption position toggle (overlay/below) ─────────────────────────
+let captionBelow = false;
+document.getElementById("btn-caption-toggle")?.addEventListener("click", () => {
+  captionBelow = !captionBelow;
+  document.getElementById("grid").classList.toggle("caption-below", captionBelow);
+  document.querySelectorAll(".meme-card").forEach(function(c) {
+    c.classList.toggle("caption-below", captionBelow);
+  });
+  toast(captionBelow ? "📝 Légende sous l'image" : "📝 Légende sur l'image");
 });
 
 document
@@ -2085,6 +3008,7 @@ document.addEventListener("drop", async (e) => {
     }
     if (result) {
       allMemes.unshift(result);
+      window.memedrop.syncMeme(result).catch(() => {});
       if (result.kind === "audio") {
         audioLibrary.unshift(result);
         renderAudioLibrary();
@@ -2216,6 +3140,57 @@ async function initSettings() {
     });
   }
 
+  // ── Mute scheduler programme ────────────────────────────────────────
+  const scheduleCheckbox = document.getElementById("setting-mute-schedule");
+  const scheduleOptions = document.getElementById("mute-schedule-options");
+  function populateSelect(id, max) {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = "";
+    for (let i = 0; i < max; i++) {
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = String(i).padStart(2, "0");
+      sel.appendChild(opt);
+    }
+  }
+  populateSelect("schedule-start-hour", 24);
+  populateSelect("schedule-start-minute", 60);
+  populateSelect("schedule-end-hour", 24);
+  populateSelect("schedule-end-minute", 60);
+
+  async function loadSchedule() {
+    if (!window.memedrop.getMuteSchedule) return;
+    const sched = await window.memedrop.getMuteSchedule();
+    if (sched) {
+      scheduleCheckbox.checked = sched.enabled || false;
+      document.getElementById("schedule-start-hour").value = sched.startHour || 22;
+      document.getElementById("schedule-start-minute").value = sched.startMinute || 0;
+      document.getElementById("schedule-end-hour").value = sched.endHour || 8;
+      document.getElementById("schedule-end-minute").value = sched.endMinute || 0;
+      scheduleOptions.classList.toggle("hidden", !sched.enabled);
+    }
+  }
+  async function saveSchedule() {
+    if (!window.memedrop.setMuteSchedule) return;
+    await window.memedrop.setMuteSchedule({
+      enabled: scheduleCheckbox.checked,
+      startHour: parseInt(document.getElementById("schedule-start-hour").value) || 22,
+      startMinute: parseInt(document.getElementById("schedule-start-minute").value) || 0,
+      endHour: parseInt(document.getElementById("schedule-end-hour").value) || 8,
+      endMinute: parseInt(document.getElementById("schedule-end-minute").value) || 0,
+    });
+  }
+  loadSchedule();
+  scheduleCheckbox.addEventListener("change", () => {
+    scheduleOptions.classList.toggle("hidden", !scheduleCheckbox.checked);
+    saveSchedule();
+    toast(scheduleCheckbox.checked ? "🤫 Ne pas déranger activé" : "🔔 Mode normal");
+  });
+  document.querySelectorAll("#schedule-start-hour, #schedule-start-minute, #schedule-end-hour, #schedule-end-minute").forEach(el => {
+    el.addEventListener("change", saveSchedule);
+  });
+
   if (settingOpacity) {
     settingOpacity.value = settings.opacity ?? 1.0;
     opacityOut.textContent = `${Math.round(settingOpacity.value * 100)}%`;
@@ -2302,7 +3277,8 @@ async function initSettings() {
   }
 
   if (settingGiphy) {
-    settingGiphy.value = settings.giphyApiKey || "A7Su0Alx0oH5dgrDaOicRiEBYqeZGWdX";
+    settingGiphy.value =
+      settings.giphyApiKey || "A7Su0Alx0oH5dgrDaOicRiEBYqeZGWdX";
     settingGiphy.addEventListener("change", (e) => {
       window.memedrop.updateSettings({ giphyApiKey: e.target.value.trim() });
     });
@@ -2369,6 +3345,18 @@ async function initSettings() {
       };
       input.click();
     });
+
+  document.getElementById("btn-reset-app")?.addEventListener("click", async () => {
+    if (!confirm("Réinitialiser tous les réglages ? Les fichiers memes ne seront pas supprimés.")) return;
+    if (!confirm("Confirmation : toutes les données locales seront effacées.")) return;
+    const r = await window.memedrop.resetApp();
+    if (r && r.ok) {
+      toast("🗑️ App réinitialisée, recharge...");
+      setTimeout(() => window.location.reload(), 1000);
+    } else {
+      toast("Erreur: " + (r?.error || "inconnue"), "error");
+    }
+  });
 
   if (pairingCodeDisplay) {
     pairingCodeDisplay.textContent = settings.linkIdentity || "------";
@@ -2532,6 +3520,28 @@ async function init() {
   setupShortcutListener();
   setupFileWatcher();
 
+  // Initialize triage panel
+  initTriagePanel();
+
+  // Load saved triage preferences
+  await loadTriageState();
+  // Sync UI buttons with loaded state
+  const types = triageState.typeFilters;
+  document.querySelectorAll(".triage-btn").forEach((btn) => {
+    if (btn.dataset.filter === "all") {
+      btn.classList.toggle("active", types.length === 0);
+    } else {
+      btn.classList.toggle("active", types.includes(btn.dataset.filter));
+    }
+  });
+  const sortEl = document.getElementById("triage-sort-select");
+  if (sortEl) sortEl.value = triageState.sort || "name";
+  const favEl = document.getElementById("triage-fav-select");
+  if (favEl) favEl.value = triageState.favFilter || "all";
+  const searchEl = document.getElementById("triage-search");
+  if (searchEl) searchEl.value = triageState.query || "";
+  applyTriage();
+
   // Selection action bar
   document
     .getElementById("btn-delete-selected")
@@ -2539,6 +3549,24 @@ async function init() {
   document
     .getElementById("btn-clear-selection")
     ?.addEventListener("click", clearSelection);
+
+  document.getElementById("btn-tag-selected")?.addEventListener("click", async () => {
+    const paths = Array.from(selectedPaths);
+    if (paths.length === 0) return;
+    const tag = prompt("Tag \u00e0 ajouter/retirer (ex: fun) :");
+    if (!tag) return;
+    for (const p of paths) {
+      const current = allTagsMap[p] || [];
+      if (current.includes(tag)) {
+        await window.memedrop.setTags(p, current.filter(t => t !== tag));
+      } else {
+        await window.memedrop.setTags(p, [...current, tag]);
+      }
+    }
+    await loadTags();
+    renderGrid();
+    toast("\uD83C\uDFF7\uFE0F Tag \"" + tag + "\" appliqu\u00E9 \u00E0 " + paths.length + " meme(s)");
+  });
 
   // Audio play listener
   try {
@@ -2584,20 +3612,128 @@ window.addEventListener("focus", () => {
   loadMemes();
 });
 
+// ── Utility: détecter une URL média ──────────────────────────────
+function isMediaUrl(text) {
+  if (!text || typeof text !== "string") return false;
+  if (!/^https?:\/\//i.test(text)) return false;
+  // URL directe avec extension media
+  if (/\.(mp4|webm|gif|jpg|jpeg|png|webp|mp3|wav|ogg)(\?|$)/i.test(text))
+    return true;
+  // Plateformes supportées
+  if (/giphy\.com/i.test(text)) return true;
+  if (/tenor\.com/i.test(text)) return true;
+  if (/twitter\.com/i.test(text)) return true;
+  if (/x\.com/i.test(text)) return true;
+  if (/youtube\.com/i.test(text)) return true;
+  if (/youtu\.be/i.test(text)) return true;
+  if (/spotify\.com/i.test(text)) return true;
+  if (/open\.spotify\.com/i.test(text)) return true;
+  return false;
+}
+
 // Paste from clipboard shortcut (Ctrl+Shift+V / Ctrl+V)
+// Supporte: fichiers, images ET URLs media
 document.addEventListener("paste", async (e) => {
+  // 1. Si le presse-papier contient du texte, vérifier si c'est une URL média
+  const text = e.clipboardData.getData("text");
+  if (isMediaUrl(text)) {
+    try {
+      const rawUrl = text.trim();
+      const isSocialUrl = /youtube\.com|youtu\.be|spotify\.com|open\.spotify\.com/i.test(rawUrl);
+
+      if (isSocialUrl && window.memedrop.resolveUrl) {
+        // YouTube/Spotify → résoudre pour avoir la preview, mais garder l'URL originale
+        const resolved = await window.memedrop.resolveUrl(rawUrl);
+
+        // Télécharger la thumbnail pour la preview (mais on garde l'URL originale)
+        let downloaded = null;
+        if (resolved && resolved.url && !resolved.unresolved) {
+          try {
+            downloaded = await window.memedrop.downloadUrl(resolved.url);
+          } catch {}
+        }
+
+        if (downloaded) {
+          // Marquer comme weblink pour que l'envoi utilise l'URL originale
+          downloaded.url = rawUrl;
+          downloaded.isWeblink = true;
+          allMemes.unshift(downloaded);
+          renderGrid();
+          toast(`📥 ${downloaded.name} (lien ${resolved.kind || 'media'})`);
+          window.memedrop.syncMeme(downloaded).catch(() => {});
+          openDropPanel(downloaded);
+        } else {
+          // Fallback: saving URL only
+          const pseudoMeme = {
+            name: rawUrl.split("/").pop()?.split("?")[0] || "media",
+            url: rawUrl,
+            kind: resolved?.kind || "image",
+            size: 0,
+            isWeblink: true,
+          };
+          allMemes.unshift(pseudoMeme);
+          renderGrid();
+          toast(`📥 ${pseudoMeme.name} (lien)`);
+          openDropPanel(pseudoMeme);
+        }
+        return;
+      }
+
+      // URL media directe (Giphy, Tenor, Twitter, etc.)
+      let downloadUrl = rawUrl;
+      if (window.memedrop.resolveUrl) {
+        const resolved = await window.memedrop.resolveUrl(downloadUrl);
+        if (!resolved.unresolved && resolved.url) {
+          downloadUrl = resolved.url;
+        }
+      }
+      const downloaded = await window.memedrop.downloadUrl(downloadUrl);
+      if (downloaded) {
+        allMemes.unshift(downloaded);
+        renderGrid();
+        toast(`📥 ${downloaded.name} importé depuis le presse-papier`);
+        window.memedrop.syncMeme(downloaded).catch(() => {});
+        openDropPanel(downloaded);
+        return;
+      }
+    } catch (e) {
+      console.warn("Paste URL download failed:", e);
+    }
+  }
+
+  // 2. Fallback: fichiers ou image du presse-papier
   if (e.clipboardData.files.length > 0) {
-    const result = await window.memedrop.saveFromClipboard();
-    if (result && result.path) {
-      openDropPanel(result);
-    } else {
-      toast("Rien � coller depuis le presse-papier", "error");
+    for (const file of e.clipboardData.files) {
+      let result;
+      if (file.path) {
+        result = await window.memedrop.saveFromFile(file.path);
+      } else {
+        const buffer = await file.arrayBuffer();
+        result = await window.memedrop.saveFromBuffer({
+          name: file.name,
+          buffer,
+          type: file.type,
+        });
+      }
+      if (result) {
+        allMemes.unshift(result);
+        window.memedrop.syncMeme(result).catch(() => {});
+        openDropPanel(result);
+        return;
+      }
     }
+  }
+
+  // 3. Fallback: image classique du presse-papier
+  const result = await window.memedrop.saveFromClipboard();
+  if (result && result.path) {
+    allMemes.unshift(result);
+    renderGrid();
+    toast("📋 Image collée depuis le presse-papier");
+    window.memedrop.syncMeme(result).catch(() => {});
+    openDropPanel(result);
   } else {
-    const result = await window.memedrop.saveFromClipboard();
-    if (result && result.path) {
-      openDropPanel(result);
-    }
+    toast("Rien à coller (fichier, image ou URL media)", "error");
   }
 });
 
@@ -2614,6 +3750,7 @@ async function loadUsers() {
       if (users && users.length > 0) {
         users.forEach((u) => {
           const v = "@" + u.username;
+          if (hiddenTargets.has(v)) return; // Filtrer les masqués
           added.add(v);
           const opt = document.createElement("option");
           opt.value = v;
@@ -2623,7 +3760,7 @@ async function loadUsers() {
       }
       // Recent targets (not already in Discord users)
       for (const rt of recentTargets) {
-        if (!added.has(rt)) {
+        if (!added.has(rt) && !hiddenTargets.has(rt)) {
           added.add(rt);
           const opt = document.createElement("option");
           opt.value = rt;

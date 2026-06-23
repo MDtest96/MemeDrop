@@ -13,6 +13,7 @@ const {
 const path = require("path");
 const fs = require("fs");
 const WebSocket = require("ws");
+const crypto = require("crypto");
 const { setupSettings } = require("./modules/settings");
 const { setupUpdater } = require("./modules/updater");
 const { setupHistory } = require("./modules/history");
@@ -28,6 +29,36 @@ const {
   getMemeFolder,
 } = require("./utils");
 const store = require("./store");
+
+// ── Helper: MIME type depuis extension ────────────────────────────────────
+function getMimeFromExt(ext) {
+  const map = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+  };
+  return map[ext.toLowerCase()] || "image/png";
+}
+
+// ── Debounce: éviter les notifications en rafale ────────────────────────
+let _libraryChangedTimer = null;
+function notifyLibraryChanged() {
+  if (_libraryChangedTimer) clearTimeout(_libraryChangedTimer);
+  _libraryChangedTimer = setTimeout(() => {
+    _libraryChangedTimer = null;
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send("library:changed");
+    }
+  }, 500);
+}
 
 const DEFAULT_SERVER =
   process.env.DEFAULT_SERVER || "wss://memedrop-bot-production.up.railway.app";
@@ -481,6 +512,109 @@ function connectWS() {
           },
         });
         break;
+      case "meme_sync":
+        try {
+          const { data } = msg;
+          if (!data || !data.name) {
+            console.log("[ws] meme_sync ignored: no data/name");
+            break;
+          }
+          console.log("[ws] meme_sync received:", data.name, "from", msg.from?.username || "unknown");
+
+          // Vérifier si le meme a été préalablement supprimé (par nom)
+          // Note: on ne bloque PAS l'import ici, le filtrage se fait dans memes:list
+          // qui compare les chemins complets. Les shared_* ont un chemin différent
+          // donc ils ne seront pas filtrés.
+          const memeFolder = getMemeFolder(store, app);
+          if (!fs.existsSync(memeFolder))
+            fs.mkdirSync(memeFolder, { recursive: true });
+
+          if (data.buffer) {
+            const safeName = path.basename(data.name).replace(/[^a-zA-Z0-9._-]/g, "_");
+            if (safeName === "_" || safeName === ".") break;
+            let filename = "shared_" + safeName;
+            let destPath = path.join(memeFolder, filename);
+            let counter = 2;
+            while (fs.existsSync(destPath)) {
+              var dot = safeName.lastIndexOf(".");
+              var base = dot >= 0 ? safeName.substring(0, dot) : safeName;
+              var ext = dot >= 0 ? safeName.substring(dot) : "";
+              filename = "shared_" + base + "_" + counter + ext;
+              destPath = path.join(memeFolder, filename);
+              counter++;
+            }
+
+            // Hash dedup (SHA256 premiers 4KB)
+            try {
+              var incomingBuffer = Buffer.from(data.buffer, "base64");
+              var incomingHash = crypto.createHash("sha256").update(incomingBuffer.slice(0, 4096)).digest("hex");
+              var existingFiles = fs.readdirSync(memeFolder);
+              var hashDuplicate = existingFiles.some(function(f) {
+                if (!f.startsWith("shared_")) return false;
+                try {
+                  var existingPath = path.join(memeFolder, f);
+                  var existingRaw = fs.readFileSync(existingPath);
+                  var existingHash = crypto.createHash("sha256").update(existingRaw.slice(0, 4096)).digest("hex");
+                  return existingHash === incomingHash;
+                } catch { return false; }
+              });
+              if (hashDuplicate) {
+                console.log("[ws] meme_sync skipped (duplicate hash):", safeName);
+                break;
+              }
+            } catch (e) {
+              console.warn("[ws] hash check failed:", e.message);
+            }
+
+            fs.writeFileSync(destPath, Buffer.from(data.buffer, "base64"));
+
+            try {
+              var allTags = store.get("tags") || {};
+              if (!allTags[destPath]) allTags[destPath] = [];
+              if (!allTags[destPath].includes("importé")) allTags[destPath].push("importé");
+              store.set("tags", allTags);
+            } catch (e) {
+              console.error("[ws] failed to tag imported meme:", e.message);
+            }
+
+            for (var w of BrowserWindow.getAllWindows()) {
+              if (!w.isDestroyed()) {
+                w.webContents.send("meme:synced", {
+                  name: path.parse(filename).name,
+                  path: destPath,
+                  kind: data.kind || "image",
+                  from: msg.from,
+                });
+              }
+            }
+            notifyLibraryChanged();
+          } else if (data.url) {
+            // URL seulement → laisser le renderer la downloader
+            for (const w of BrowserWindow.getAllWindows()) {
+              if (!w.isDestroyed()) {
+                w.webContents.send("meme:synced", {
+                  name: data.name,
+                  url: data.url,
+                  kind: data.kind || "image",
+                  from: msg.from,
+                });
+              }
+            }
+          }
+        } catch (err) {
+          console.error("[ws] meme_sync error:", err.message);
+        }
+        break;
+      case "library_sync_request":
+        // Un autre utilisateur demande les memes → forcer un sync
+        console.log("[ws] library_sync_request received, forcing sync");
+        // Forcer syncAllMemes dans le renderer
+        for (const w of BrowserWindow.getAllWindows()) {
+          if (!w.isDestroyed()) {
+            w.webContents.send("library:sync-requested");
+          }
+        }
+        break;
       case "ping":
         ws.send(JSON.stringify({ type: "pong" }));
         break;
@@ -595,6 +729,13 @@ ipcMain.handle("mute:set", (_e, minutes) => {
 });
 ipcMain.handle("mute:get", () => (isMuted() ? store.get("muteUntil") : null));
 
+// ── Programmateur de mute ────────────────────────────────────────────────
+ipcMain.handle("mute:getSchedule", () => store.get("muteSchedule") || { enabled: false, startHour: 22, startMinute: 0, endHour: 8, endMinute: 0 });
+ipcMain.handle("mute:setSchedule", (_e, schedule) => {
+  store.set("muteSchedule", schedule);
+  return { ok: true };
+});
+
 // Historique des drops géré par le module history
 
 // App version + update IPC handled by updater module
@@ -674,6 +815,43 @@ ipcMain.on("overlay:set-ignore-mouse", (_e, ignore) => {
   }
 });
 
+// ── Programmateur de mute (mode "Ne pas déranger") ─────────────────────
+function initMuteScheduler() {
+  const check = () => {
+    const schedule = store.get("muteSchedule");
+    if (!schedule || !schedule.enabled) return;
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const startMinutes = schedule.startHour * 60 + schedule.startMinute;
+    const endMinutes = schedule.endHour * 60 + schedule.endMinute;
+
+    let shouldMute = false;
+    if (startMinutes <= endMinutes) {
+      shouldMute = currentMinutes >= startMinutes && currentMinutes < endMinutes;
+    } else {
+      // Chevauchement minuit (ex: 22h → 6h)
+      shouldMute = currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    }
+
+    const isMuted = !!store.get("muteUntil");
+    if (shouldMute && !isMuted) {
+      store.set("muteUntil", -1);
+      console.log("[scheduler] auto-muted");
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send("mute:toggle", true);
+      }
+    } else if (!shouldMute && isMuted && store.get("muteUntil") === -1) {
+      store.set("muteUntil", null);
+      console.log("[scheduler] auto-unmuted");
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send("mute:toggle", false);
+      }
+    }
+  };
+  check();
+  setInterval(check, 30000); // Vérifier toutes les 30s
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // App lifecycle
 // ─────────────────────────────────────────────────────────────────────────────
@@ -707,6 +885,15 @@ if (!gotLock) {
     createTray();
     connectWS();
 
+    // Nettoyer les doublons shared_* au démarrage
+    cleanupDuplicateSharedMemes();
+    // Migrer les noms des anciens hiddenMemes vers hiddenMemeNames
+    migrateHiddenMemeNames();
+    // Renommer les anciens fichiers shared_ avec noms spéciaux
+    sanitizeOldSharedFilenames();
+    // Programmateur de mute
+    initMuteScheduler();
+
     // Debug shortcuts — work even when the overlay (which is non-focusable)
     // can't receive keyboard events normally. We use Ctrl+Alt+X combos so we
     // don't collide with GPU monitor overlays (NZXT CAM, MSI Afterburner, etc.)
@@ -722,6 +909,20 @@ if (!gotLock) {
     globalShortcut.register("Control+Alt+M", () => {
       if (overlayWin && !overlayWin.isDestroyed()) {
         overlayWin.webContents.openDevTools({ mode: "detach" });
+      }
+    });
+    // Ctrl+M → toggle mute
+    globalShortcut.register("CommandOrControl+M", () => {
+      const isMuted = !!store.get("muteUntil");
+      if (isMuted) {
+        store.set("muteUntil", null);
+        console.log("[shortcut] unmuted");
+      } else {
+        store.set("muteUntil", -1); // Mute until reactivation
+        console.log("[shortcut] muted");
+      }
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send("mute:toggle", !isMuted);
       }
     });
 
@@ -775,7 +976,13 @@ ipcMain.handle("drop:send", async (_e, payload) => {
         },
       };
     } else {
+      console.log("[drop:send] audioPath:", payload.audioPath);
+      console.log("[drop:send] filePath:", payload.filePath);
       formattedPayload = await formatQuickDropPayload(payload);
+      if (formattedPayload.warning) {
+        console.warn("[drop:send] warning:", formattedPayload.warning);
+      }
+      console.log("[drop:send] formattedPayload.music:", formattedPayload.music ? "PRESENT - " + formattedPayload.music.name : "NULL");
     }
 
     ws.send(JSON.stringify(formattedPayload));
@@ -798,7 +1005,18 @@ ipcMain.handle("drop:send", async (_e, payload) => {
               size: formattedPayload.media.size,
             }
           : null,
+        music: formattedPayload.music
+          ? {
+              url: formattedPayload.music.data
+                ? formattedPayload.music.data.startsWith("data:")
+                  ? formattedPayload.music.data
+                  : `data:${formattedPayload.music.mime};base64,${formattedPayload.music.data}`
+                : formattedPayload.music.url,
+              name: formattedPayload.music.name || "audio.mp3",
+            }
+          : null,
         caption: formattedPayload.caption,
+        captionBelow: formattedPayload.captionBelow || false,
         rain: formattedPayload.rain,
         from: { id: "me", username: "Moi" },
         ts: Date.now(),
@@ -833,11 +1051,224 @@ ipcMain.handle("drop:send", async (_e, payload) => {
   return { ok: false, error: "Not connected" };
 });
 
+// ── Meme Sync: diffuse un nouveau meme aux autres utilisateurs ────────────
+ipcMain.handle("memes:sync", async (_e, memeData) => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return { ok: false, error: "Not connected" };
+  }
+  try {
+    const data = { ...memeData };
+    if (memeData.path && !memeData.buffer) {
+      const raw = await fs.promises.readFile(memeData.path);
+      data.buffer = raw.toString("base64");
+      data.mime = getMimeFromExt(path.extname(memeData.path));
+    }
+    console.log("[memes:sync] sending", data.name, "(" + (data.buffer ? data.buffer.length + " bytes base64" : "URL only") + ")");
+    ws.send(JSON.stringify({ type: "meme_sync", data }));
+    return { ok: true };
+  } catch (err) {
+    console.error("[memes:sync] error:", err.message);
+    return { ok: false, error: err.message };
+  }
+});
+
+// ── Sync All: envoie tous les memes locaux aux autres utilisateurs ─────
+const SYNC_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes entre deux sync
+
+ipcMain.handle("memes:syncAll", async (_e, force) => {
+  const lastSync = store.get("lastSyncTimestamp") || 0;
+  const now = Date.now();
+
+  if (!force && (now - lastSync) < SYNC_COOLDOWN_MS) {
+    const remaining = Math.ceil((SYNC_COOLDOWN_MS - (now - lastSync)) / 1000);
+    console.log("[memes:syncAll] cooldown active, retry in", remaining, "s");
+    return { ok: true, count: 0, skipped: true, cooldown: remaining };
+  }
+  store.set("lastSyncTimestamp", now);
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return { ok: false, error: "Not connected" };
+  }
+  try {
+    const memeFolder = getMemeFolder(store, app);
+    if (!fs.existsSync(memeFolder)) return { ok: true, count: 0 };
+
+    const hidden = new Set(store.get("hiddenMemes") || []);
+    const files = fs.readdirSync(memeFolder);
+    let synced = 0;
+
+    for (const file of files) {
+      // Ne pas partager les fichiers déjà importés (prefix shared_)
+      if (file.startsWith("shared_")) continue;
+
+      const filePath = path.join(memeFolder, file);
+      if (hidden.has(filePath)) continue; // Ne pas partager les memes cachés
+
+      const ext = path.extname(file).toLowerCase();
+      const validExts = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".webm", ".mp3", ".wav", ".ogg"];
+      if (!validExts.includes(ext)) continue;
+
+      const raw = await fs.promises.readFile(filePath);
+      const data = {
+        name: file,
+        kind: ext === ".gif" ? "gif" : [".mp4", ".webm"].includes(ext) ? "video" : [".mp3", ".wav", ".ogg"].includes(ext) ? "audio" : "image",
+        buffer: raw.toString("base64"),
+        mime: getMimeFromExt(ext),
+      };
+      ws.send(JSON.stringify({ type: "meme_sync", data }));
+      synced++;
+    }
+
+    console.log("[memes:syncAll] synced", synced, "memes");
+    return { ok: true, count: synced };
+  } catch (err) {
+    console.error("[memes:syncAll] error:", err.message);
+    return { ok: false, error: err.message };
+  }
+});
+
+// ── Demander aux autres d'envoyer leurs memes ─────────────────────────
+ipcMain.handle("library:requestSync", async () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return { ok: false, error: "Not connected" };
+  }
+  try {
+    ws.send(JSON.stringify({ type: "library_sync_request" }));
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// ── Cleanup: supprime les doublons shared_* (garder le plus récent) ───
+function cleanupDuplicateSharedMemes() {
+  try {
+    const memeFolder = getMemeFolder(store, app);
+    console.log("[cleanup] checking folder:", memeFolder);
+    if (!fs.existsSync(memeFolder)) {
+      console.log("[cleanup] folder does not exist");
+      return;
+    }
+
+    const files = fs.readdirSync(memeFolder);
+    const byName = {}; // originalName -> [{file, path, mtime}]
+
+    for (const file of files) {
+      // Nouveau format: shared_NOM.ext, Ancien format: shared_TIMESTAMP_NOM.ext
+      var baseName = file.startsWith("shared_") ? file.substring(7) : null;
+      if (!baseName) continue;
+      // Enlever le timestamp pour l'ancien format
+      var originalName = baseName.replace(/^\d+_/, "");
+
+      if (!byName[originalName]) byName[originalName] = [];
+      byName[originalName].push({
+        file,
+        path: path.join(memeFolder, file),
+      });
+    }
+
+    let removed = 0;
+    for (var orig in byName) {
+      var entries = byName[orig];
+      if (entries.length <= 1) continue;
+      // Garder le premier, supprimer les autres
+      for (var i = 1; i < entries.length; i++) {
+        try {
+          fs.unlinkSync(entries[i].path);
+          removed++;
+          console.log("[cleanup] removed duplicate:", entries[i].file);
+        } catch (e) {
+          console.error("[cleanup] failed to remove", entries[i].file, e.message);
+        }
+      }
+    }
+
+    if (removed > 0) console.log("[cleanup] removed", removed, "duplicate shared memes");
+  } catch (err) {
+    console.error("[cleanup] error:", err.message);
+  }
+}
+
+// ── Migration: extraire les noms des anciens hiddenMemes ──────────────
+function migrateHiddenMemeNames() {
+  try {
+    const hiddenMemes = store.get("hiddenMemes") || [];
+    const hiddenNames = new Set(store.get("hiddenMemeNames") || []);
+
+    let changed = false;
+    for (const fullPath of hiddenMemes) {
+      const name = path.basename(fullPath);
+      if (!hiddenNames.has(name)) {
+        hiddenNames.add(name);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      store.set("hiddenMemeNames", Array.from(hiddenNames));
+      console.log("[migrate] hiddenMemeNames migrated:", hiddenNames.size, "names");
+    }
+  } catch (err) {
+    console.error("[migrate] hiddenMemeNames error:", err.message);
+  }
+}
+
+// ── Renommer les anciens fichiers shared_ avec noms non sanitizés ─────
+function sanitizeOldSharedFilenames() {
+  try {
+    const memeFolder = getMemeFolder(store, app);
+    if (!fs.existsSync(memeFolder)) return;
+    const files = fs.readdirSync(memeFolder);
+    for (const file of files) {
+      if (!file.startsWith("shared_")) continue;
+      // Extraire la partie apres shared_
+      var rest = file.substring(7);
+      // Enlever l'eventuel timestamp numerique au debut (ancien format)
+      var noTimestamp = rest.replace(/^\d+_/, "");
+      // Sanitizer: remplacer TOUS les caracteres non autorises par _
+      var sanitized = noTimestamp.replace(/[^a-zA-Z0-9._-]/g, "_");
+      if (!sanitized || sanitized === "_") continue;
+      if (sanitized === noTimestamp) continue; // Deja propre
+      var oldPath = path.join(memeFolder, file);
+      var newFilename = "shared_" + sanitized;
+      var newPath = path.join(memeFolder, newFilename);
+      // Gerer les collisions
+      var counter = 2;
+      while (fs.existsSync(newPath)) {
+        var dot = sanitized.lastIndexOf(".");
+        var base = dot >= 0 ? sanitized.substring(0, dot) : sanitized;
+        var ext = dot >= 0 ? sanitized.substring(dot) : "";
+        newPath = path.join(memeFolder, "shared_" + base + "_" + counter + ext);
+        counter++;
+      }
+      fs.renameSync(oldPath, newPath);
+      console.log("[cleanup] sanitized:", file, "->", path.basename(newPath));
+    }
+  } catch (err) {
+    console.error("[cleanup] sanitize error:", err.message);
+  }
+}
+
 // Collage and URL resolvers are handled by memes module
 ipcMain.handle("drop:sendUrl", async (_e, payload) => {
   if (ws && ws.readyState === WebSocket.OPEN) {
-    const { target, url, caption, rain } = payload;
+    const { target, url, caption, rain, audioPath } = payload;
     const resolved = await resolveMediaUrl(url);
+
+    // Lire le fichier audio si fourni
+    let music = null;
+    if (audioPath) {
+      try {
+        const ext = path.extname(audioPath).toLowerCase();
+        let mime = "audio/mpeg";
+        if (ext === ".wav") mime = "audio/wav";
+        else if (ext === ".ogg") mime = "audio/ogg";
+        const data = await fs.promises.readFile(audioPath, "base64");
+        music = { name: path.basename(audioPath), kind: "audio", mime, data };
+      } catch (err) {
+        console.error("Failed to read audio file for weblink drop:", err);
+      }
+    }
 
     const msg = {
       type: "quick_drop",
@@ -851,6 +1282,7 @@ ipcMain.handle("drop:sendUrl", async (_e, payload) => {
         name: resolved.url.split("/").pop()?.split("?")[0] || "media",
         size: 0,
       },
+      music,
     };
 
     ws.send(JSON.stringify(msg));
@@ -909,7 +1341,10 @@ ipcMain.handle("giphy:search", async (e, query, offset = 0) => {
       `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(query)}&limit=24&offset=${offset}`,
     );
     const json = await res.json();
-    return { data: json.data || [], pagination: json.pagination || { total_count: 0 } };
+    return {
+      data: json.data || [],
+      pagination: json.pagination || { total_count: 0 },
+    };
   } catch (err) {
     console.error("Giphy Search error:", err);
     return { data: [], pagination: { total_count: 0 } };
@@ -925,7 +1360,10 @@ ipcMain.handle("giphy:trending", async (e, offset = 0) => {
       `https://api.giphy.com/v1/gifs/trending?api_key=${apiKey}&limit=24&offset=${offset}`,
     );
     const json = await res.json();
-    return { data: json.data || [], pagination: json.pagination || { total_count: 0 } };
+    return {
+      data: json.data || [],
+      pagination: json.pagination || { total_count: 0 },
+    };
   } catch (err) {
     console.error("Giphy Trending error:", err);
     return { data: [], pagination: { total_count: 0 } };
@@ -964,98 +1402,127 @@ ipcMain.handle("giphy:download", async (e, url) => {
   }
 });
 
-  // ── Generic URL download to memes folder ──────────────────────────────────
-  ipcMain.handle("memes:downloadUrl", async (e, url) => {
-    try {
-      const fs = require("fs");
-      const path = require("path");
-      const { net } = require("electron");
-      const memeFolder = getMemeFolder(store, app);
-      if (!fs.existsSync(memeFolder)) fs.mkdirSync(memeFolder, { recursive: true });
+// ── Generic URL download to memes folder ──────────────────────────────────
+ipcMain.handle("memes:downloadUrl", async (e, url) => {
+  try {
+    const fs = require("fs");
+    const path = require("path");
+    const { net } = require("electron");
+    const memeFolder = getMemeFolder(store, app);
+    if (!fs.existsSync(memeFolder))
+      fs.mkdirSync(memeFolder, { recursive: true });
 
-      const res = await net.fetch(url);
-      const contentType = res.headers.get("content-type") || "";
-      const buffer = Buffer.from(await res.arrayBuffer());
+    const res = await net.fetch(url);
+    const contentType = res.headers.get("content-type") || "";
+    const buffer = Buffer.from(await res.arrayBuffer());
 
-      // Determine extension
-      let ext = ".gif";
-      if (contentType.includes("video/mp4")) ext = ".mp4";
-      else if (contentType.includes("video/webm")) ext = ".webm";
-      else if (contentType.includes("image/png")) ext = ".png";
-      else if (contentType.includes("image/jpeg")) ext = ".jpg";
-      else if (contentType.includes("image/webp")) ext = ".webp";
-      else if (contentType.includes("image/gif")) ext = ".gif";
-      else if (contentType.includes("audio")) ext = ".mp3";
+    // Determine extension
+    let ext = ".gif";
+    if (contentType.includes("video/mp4")) ext = ".mp4";
+    else if (contentType.includes("video/webm")) ext = ".webm";
+    else if (contentType.includes("image/png")) ext = ".png";
+    else if (contentType.includes("image/jpeg")) ext = ".jpg";
+    else if (contentType.includes("image/webp")) ext = ".webp";
+    else if (contentType.includes("image/gif")) ext = ".gif";
+    else if (contentType.includes("audio")) ext = ".mp3";
 
-      const filename = `web_${Date.now()}${ext}`;
-      const destPath = path.join(memeFolder, filename);
-      fs.writeFileSync(destPath, buffer);
+    const filename = `web_${Date.now()}${ext}`;
+    const destPath = path.join(memeFolder, filename);
+    fs.writeFileSync(destPath, buffer);
 
-      const kind =
-        ext === ".mp4" || ext === ".webm" ? "video" :
-        ext === ".gif" ? "gif" :
-        [".mp3", ".wav", ".ogg"].includes(ext) ? "audio" : "image";
+    const kind =
+      ext === ".mp4" || ext === ".webm"
+        ? "video"
+        : ext === ".gif"
+          ? "gif"
+          : [".mp3", ".wav", ".ogg"].includes(ext)
+            ? "audio"
+            : "image";
 
-      return { name: path.parse(filename).name, path: destPath, kind };
-    } catch (err) {
-      console.error("URL download error:", err);
-      return null;
+    return { name: path.parse(filename).name, path: destPath, kind };
+  } catch (err) {
+    console.error("URL download error:", err);
+    return null;
+  }
+});
+
+// ── Fetch URL as data URL (bypass CSP/CORS) ─────────────────────────────────
+ipcMain.handle("fetch:asDataUrl", async (e, url) => {
+  try {
+    const { net } = require("electron");
+    const res = await net.fetch(url);
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const contentType = res.headers.get("content-type") || "image/gif";
+    return `data:${contentType};base64,${buffer.toString("base64")}`;
+  } catch (err) {
+    console.error("Fetch proxy error:", err);
+    return null;
+  }
+});
+
+// ── Export/import config ────────────────────────────────────────────────────
+ipcMain.handle("tools:exportConfig", async () => {
+  const data = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    settings: {
+      serverUrl: store.get("serverUrl"),
+      volume: store.get("volume"),
+      duration: store.get("duration"),
+      videoDuration: store.get("videoDuration"),
+      giphyApiKey: store.get("giphyApiKey"),
+      memeFolderPath: store.get("memeFolderPath"),
+      theme: store.get("theme"),
+    },
+    tags: store.get("tags"),
+    favorites: store.get("favorites"),
+    groups: store.get("groups"),
+    audioPairings: store.get("audioPairings"),
+  };
+  return data;
+});
+
+ipcMain.handle("tools:importConfig", async (_e, data) => {
+  try {
+    if (!data || !data.version) return { ok: false, error: "Format invalide" };
+    if (data.settings) {
+      for (const [k, v] of Object.entries(data.settings)) store.set(k, v);
     }
-  });
+    if (data.tags) store.set("tags", data.tags);
+    if (data.favorites) store.set("favorites", data.favorites);
+    if (data.groups) store.set("groups", data.groups);
+    if (data.audioPairings) store.set("audioPairings", data.audioPairings);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
 
-  // ── Fetch URL as data URL (bypass CSP/CORS) ─────────────────────────────────
-  ipcMain.handle("fetch:asDataUrl", async (e, url) => {
-    try {
-      const { net } = require("electron");
-      const res = await net.fetch(url);
-      const buffer = Buffer.from(await res.arrayBuffer());
-      const contentType = res.headers.get("content-type") || "image/gif";
-      return `data:${contentType};base64,${buffer.toString("base64")}`;
-    } catch (err) {
-      console.error("Fetch proxy error:", err);
-      return null;
-    }
-  });
-
-  // ── Export/import config ────────────────────────────────────────────────────
-  ipcMain.handle("tools:exportConfig", async () => {
-    const data = {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      settings: {
-        serverUrl: store.get("serverUrl"),
-        volume: store.get("volume"),
-        duration: store.get("duration"),
-        videoDuration: store.get("videoDuration"),
-        giphyApiKey: store.get("giphyApiKey"),
-        memeFolderPath: store.get("memeFolderPath"),
-        theme: store.get("theme"),
-      },
-      tags: store.get("tags"),
-      favorites: store.get("favorites"),
-      groups: store.get("groups"),
-      audioPairings: store.get("audioPairings"),
+// ── Reset complet de l'app ───────────────────────────────────────────────
+ipcMain.handle("tools:resetApp", async () => {
+  try {
+    store.clear();
+    // Re-set les valeurs par défaut après le clear
+    const defaults = {
+      serverUrl: "wss://memedrop-bot-production.up.railway.app",
+      volume: 0.75,
+      musicVolume: 0.75,
+      duration: 4,
+      videoDuration: 30,
+      soundOnArrival: true,
+      autostart: false,
+      hiddenMemes: [],
+      hiddenMemeNames: [],
+      triageState: { typeFilters: [], tag: null, favFilter: "all", sort: "name", query: "" },
     };
-    return data;
-  });
+    for (const [k, v] of Object.entries(defaults)) store.set(k, v);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
 
-  ipcMain.handle("tools:importConfig", async (_e, data) => {
-    try {
-      if (!data || !data.version) return { ok: false, error: "Format invalide" };
-      if (data.settings) {
-        for (const [k, v] of Object.entries(data.settings)) store.set(k, v);
-      }
-      if (data.tags) store.set("tags", data.tags);
-      if (data.favorites) store.set("favorites", data.favorites);
-      if (data.groups) store.set("groups", data.groups);
-      if (data.audioPairings) store.set("audioPairings", data.audioPairings);
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  });
-
-  // ── Dialog: select folder ────────────────────────────────────────────────
+// ── Dialog: select folder ────────────────────────────────────────────────
 ipcMain.handle("dialog:selectFolder", async () => {
   const { dialog } = require("electron");
   const result = await dialog.showOpenDialog({

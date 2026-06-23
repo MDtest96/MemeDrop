@@ -408,7 +408,7 @@ function playAudioDrop({ media, caption, from, settings }) {
   if (settings?.soundOnArrival) playPop(settings.volume);
 }
 
-function renderDrop({ media, caption, from, settings, music, rain }) {
+function renderDrop({ media, caption, from, settings, music, rain, captionBelow }) {
   // Drop pluie seule — pas de média visuel, juste les émojis + son
   if (!media) {
     if (rain) renderRain(rain);
@@ -452,30 +452,6 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
   });
   wrap.appendChild(closeBtn);
 
-  // Emoji reactions
-  const reactions = ["👍", "😂", "🔥", "😭", "💀"];
-  const reactBar = document.createElement("div");
-  reactBar.className = "react-bar";
-  reactBar.style.cssText = "position:absolute;bottom:-32px;left:50%;transform:translateX(-50%);display:flex;gap:4px;z-index:4;opacity:0;transition:opacity 0.15s";
-  reactions.forEach(emoji => {
-    const btn = document.createElement("button");
-    btn.textContent = emoji;
-    btn.style.cssText = "width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.2);background:rgba(0,0,0,0.7);color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0";
-    btn.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      // Bump effect
-      btn.style.transform = "scale(1.3)";
-      setTimeout(() => btn.style.transform = "scale(1)", 150);
-    });
-    reactBar.appendChild(btn);
-  });
-  wrap.appendChild(reactBar);
-
-  // Show reactions on hover (same as close button)
-  wrap.addEventListener("mouseenter", () => reactBar.style.opacity = "1");
-  wrap.addEventListener("mouseleave", () => reactBar.style.opacity = "0");
-
   const mediaBox = document.createElement('div');
   mediaBox.className = 'media-box';
 
@@ -491,6 +467,13 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
   let el;
   let isVideo = false;
 
+  // Si une musique d'accompagnement est fournie pour une vidéo,
+  // on mute la vidéo et la musique remplace le son original.
+  let initialVideoVol = settings?.volume ?? 0.75;
+  if (music?.url && media.kind === 'video') {
+    initialVideoVol = 0;
+  }
+
   if (media.kind === 'video') {
     isVideo = true;
     el = document.createElement('video');
@@ -501,7 +484,6 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
     // element may refuse to honor the volume property until certain events
     // have fired. We apply it both before the source loads and again on
     // every "ready to play" event to be bulletproof.
-    const initialVideoVol = settings?.volume ?? 0.75;
     applyVolume(el, initialVideoVol);
     el.playsInline = true;
     el.loop = false;
@@ -556,14 +538,27 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
     mediaBox.appendChild(el);
   }
 
+  wrap.appendChild(mediaBox);
+
   if (caption && String(caption).trim()) {
     const bar = document.createElement('div');
     bar.className = 'caption-bar';
     bar.textContent = String(caption).trim().slice(0, 80);
-    mediaBox.appendChild(bar);
+    if (captionBelow) {
+      // Légende sous l'image : flex column pour empiler média + texte
+      mediaBox.style.display = 'flex';
+      mediaBox.style.flexDirection = 'column';
+      mediaBox.style.alignItems = 'flex-start';
+      mediaBox.style.overflow = 'hidden';
+      mediaBox.style.borderRadius = '14px';
+      if (el) el.style.borderRadius = '0';
+      bar.style.cssText = 'padding:8px 14px;font-size:14px;line-height:1.3;background:rgba(0,0,0,0.7);box-sizing:border-box;width:100%;text-align:center;color:#fff;word-break:break-word';
+      mediaBox.appendChild(bar);
+    } else {
+      // Légende par-dessus l'image
+      mediaBox.appendChild(bar);
+    }
   }
-
-  wrap.appendChild(mediaBox);
   anchor.appendChild(wrap);
   stage.appendChild(anchor);
   onVisualDropAdded();   // démarre le sondage curseur si c'est le 1er drop visuel
@@ -572,11 +567,13 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
 
   if (settings?.soundOnArrival) playPop(settings.volume);
 
-  // ── Musique accompagnant une image/GIF ──────────────────────────────
+  // ── Musique accompagnant une image/GIF/vidéo ────────────────────────
   // Quand le payload contient un champ `music`, on joue l'audio en même
-  // temps que l'image. Le volume suit le curseur "Volume musique".
+  // temps que le média visuel. Pour une vidéo, la musique remplace le son
+  // original (la vidéo est jouée en mute). Le volume suit le curseur
+  // "Volume musique".
   let musicAudio = null;
-  if (music?.url && (media.kind === 'image' || media.kind === 'gif')) {
+  if (music?.url && (media.kind === 'image' || media.kind === 'gif' || media.kind === 'video')) {
     musicAudio = document.createElement('audio');
     musicAudio.src = music.url;
     const musicVol = settings?.musicVolume ?? settings?.volume ?? 0.75;

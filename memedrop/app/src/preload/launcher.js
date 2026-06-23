@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld("memedrop", {
   setAudioPairing: (meme, audio) =>
     ipcRenderer.invoke("audio:setPairing", meme, audio),
   getAudioPairings: () => ipcRenderer.invoke("audio:getPairings"),
+  getAudioDuration: (path) => ipcRenderer.invoke("audio:getDuration", path),
   getHistory: () => ipcRenderer.invoke("history:get"),
   addHistory: (entry) => ipcRenderer.invoke("history:add", entry),
   getStreak: () => ipcRenderer.invoke("streak:get"),
@@ -85,6 +86,8 @@ contextBridge.exposeInMainWorld("memedrop", {
   buildCollage: (filePaths) => ipcRenderer.invoke("collage:build", filePaths),
   resolveUrl: (url) => ipcRenderer.invoke("url:resolve", url),
   deleteMemes: (paths) => ipcRenderer.invoke("memes:delete", paths),
+  restoreMeme: (path) => ipcRenderer.invoke("memes:restore", path),
+  listHiddenMemes: () => ipcRenderer.invoke("memes:listHidden"),
   renameMeme: (oldPath, newName) =>
     ipcRenderer.invoke("memes:rename", oldPath, newName),
   selectFolder: () => ipcRenderer.invoke("dialog:selectFolder"),
@@ -94,6 +97,20 @@ contextBridge.exposeInMainWorld("memedrop", {
   getCachedUsers: () => ipcRenderer.invoke("users:getCached"),
   exportConfig: () => ipcRenderer.invoke("tools:exportConfig"),
   importConfig: (data) => ipcRenderer.invoke("tools:importConfig", data),
+  resetApp: () => ipcRenderer.invoke("tools:resetApp"),
+  syncMeme: (data) => ipcRenderer.invoke("memes:sync", data),
+  syncAllMemes: (force) => ipcRenderer.invoke("memes:syncAll", force),
+  requestLibrarySync: () => ipcRenderer.invoke("library:requestSync"),
+  onMemeSynced: (callback) => {
+    const fn = (_e, meme) => callback(meme);
+    ipcRenderer.on("meme:synced", fn);
+    return () => ipcRenderer.off("meme:synced", fn);
+  },
+  onLibrarySyncRequested: (callback) => {
+    const fn = () => callback();
+    ipcRenderer.on("library:sync-requested", fn);
+    return () => ipcRenderer.off("library:sync-requested", fn);
+  },
 
   // Settings & Updater
   getVersion: () => ipcRenderer.invoke("app:get-version"),
@@ -103,6 +120,8 @@ contextBridge.exposeInMainWorld("memedrop", {
   downloadUpdate: () => ipcRenderer.invoke("update:download"),
   installUpdate: () => ipcRenderer.invoke("update:install"),
   listDisplays: () => ipcRenderer.invoke("displays:list"),
+  getMuteSchedule: () => ipcRenderer.invoke("mute:getSchedule"),
+  setMuteSchedule: (s) => ipcRenderer.invoke("mute:setSchedule", s),
   onUpdateState: (callback) => {
     const fn = (_e, state) => callback(state);
     ipcRenderer.on("update-state", fn);

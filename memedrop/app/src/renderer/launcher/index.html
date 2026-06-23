@@ -49,6 +49,9 @@
                 </div>
                 <div id="meme-count" class="meme-count">0 memes</div>
                 <button class="tb-btn" id="btn-side-panel">☰</button>
+                <button class="tb-btn" id="btn-help" title="Raccourcis clavier">
+                    ❓
+                </button>
             </div>
         </div>
 
@@ -90,32 +93,19 @@
         <!-- Toolbar -->
         <div class="toolbar">
             <div class="toolbar-left">
-                <button
-                    class="tb-btn"
-                    id="btn-open-folder"
-                    title="Ouvrir le dossier Memes"
-                >
-                    📁
-                </button>
-                <button
-                    class="tb-btn"
-                    id="btn-clipboard"
-                    title="Coller du presse-papier"
-                >
-                    📋
-                </button>
+                <button class="tb-btn" id="btn-open-folder" title="Ouvrir le dossier Memes">📁</button>
+                <button class="tb-btn" id="btn-clipboard" title="Coller depuis le presse-papier">📋</button>
                 <div class="tb-sep"></div>
-                <button class="tb-btn" id="btn-refresh" title="Actualiser">
-                    🔄
-                </button>
+                <button class="tb-btn" id="btn-refresh" title="Rafraîchir la grille">🔄</button>
+                <button class="tb-btn tb-btn-text" id="btn-sync-library" title="Envoyer mes memes aux autres">📤 Sync</button>
+                <button class="tb-btn tb-btn-text" id="btn-download-all" title="Télécharger ceux des autres">📥 Tout DL</button>
                 <div class="tb-sep"></div>
-                <button
-                    class="tb-btn"
-                    id="btn-collage-mode"
-                    title="Sélectionner plusieurs images pour un collage"
-                >
-                    🖼️ Collage
-                </button>
+                <button class="tb-btn tb-btn-text" id="btn-blacklist" title="Gérer les memes cachés">🚫 Blacklist</button>
+                <div class="tb-sep"></div>
+                <button class="tb-btn tb-btn-text" id="btn-collage-mode" title="Mode collage (sélection multiple)">🖼️ Collage</button>
+                <button class="tb-btn" id="btn-random-drop" title="Drop aléatoire">🎲</button>
+                <button class="tb-btn" id="btn-view-toggle" title="Changer la vue (grille/liste)">📋</button>
+                <button class="tb-btn" id="btn-caption-toggle" title="Légende sur/dessous l'image">📝</button>
             </div>
             <div id="collage-bar" class="collage-bar hidden">
                 <span id="collage-count-label">0/4 images</span>
@@ -149,14 +139,89 @@
 
         <!-- GRID -->
         <div id="tab-grid" class="tab-content">
+            <!-- Filter bar -->
+            <div class="grid-filter-bar">
+                <div class="filter-row">
+                    <div class="triage-type-filters">
+                        <button class="triage-btn active" data-filter="all">
+                            Tous
+                        </button>
+                        <button class="triage-btn" data-filter="image">
+                            🖼
+                        </button>
+                        <button class="triage-btn" data-filter="gif">🎞</button>
+                        <button class="triage-btn" data-filter="video">
+                            🎬
+                        </button>
+                        <button class="triage-btn" data-filter="audio">
+                            🎵
+                        </button>
+                    </div>
+                    <select
+                        id="triage-sort-select"
+                        class="triage-select"
+                        title="Tri"
+                    >
+                        <option value="name">A-Z</option>
+                        <option value="name-desc">Z-A</option>
+                        <option value="date">📅 Récents</option>
+                        <option value="date-desc">📅 Anciens</option>
+                        <option value="favorites">⭐ Fav</option>
+                    </select>
+                    <select
+                        id="triage-fav-select"
+                        class="triage-select"
+                        title="Favoris"
+                    >
+                        <option value="all">Tous</option>
+                        <option value="favs">⭐ Fav</option>
+                        <option value="non-favs">☆ Non</option>
+                    </select>
+                    <button
+                        id="btn-toggle-triage-advanced"
+                        class="triage-toggle-btn"
+                        title="Filtres avancés (tags, recherche)"
+                    >
+                        🔍
+                    </button>
+                    <span id="triage-count" class="triage-count"></span>
+                </div>
+                <!-- Advanced filters (collapsible) -->
+                <div id="triage-advanced" class="triage-advanced hidden">
+                    <div class="filter-row">
+                        <select
+                            id="triage-tag-select"
+                            class="triage-select"
+                            multiple
+                            size="3"
+                            title="Tags"
+                        ></select>
+                        <input
+                            type="text"
+                            id="triage-search"
+                            class="triage-input"
+                            placeholder="Filtrer par nom..."
+                        />
+                        <button id="btn-apply-triage" class="triage-apply-btn">
+                            ✅
+                        </button>
+                        <button id="btn-reset-triage" class="triage-reset-btn">
+                            ↺
+                        </button>
+                    </div>
+                </div>
+            </div>
             <div id="grid-empty" class="grid-empty hidden">Aucun meme</div>
             <div id="grid" class="grid"></div>
             <!-- Selection action bar -->
             <div id="selection-action-bar" class="selection-action-bar hidden">
                 <span id="selected-count">0 sélectionné</span>
                 <div class="selection-actions">
+                    <button id="btn-tag-selected" class="ghost-btn" style="font-size:11px">
+                        🏷️ Tag
+                    </button>
                     <button id="btn-delete-selected" class="danger-btn">
-                        🗑 Supprimer
+                        🗑 Cacher
                     </button>
                     <button id="btn-clear-selection" class="ghost-btn">
                         Annuler
@@ -543,6 +608,28 @@
                             </option>
                         </select>
                     </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
+                        <input type="checkbox" id="setting-mute-schedule" />
+                        🤫 Ne pas déranger (programmé)
+                    </label>
+                    <div id="mute-schedule-options" class="hidden" style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;align-items:center">
+                        <span style="font-size:11px;color:var(--text-dim)">De</span>
+                        <select id="schedule-start-hour" class="input" style="width:65px"></select>
+                        <span style="font-size:12px;color:var(--text-dim)">:</span>
+                        <select id="schedule-start-minute" class="input" style="width:55px"></select>
+                        <span style="font-size:11px;color:var(--text-dim)">à</span>
+                        <select id="schedule-end-hour" class="input" style="width:65px"></select>
+                        <span style="font-size:12px;color:var(--text-dim)">:</span>
+                        <select id="schedule-end-minute" class="input" style="width:55px"></select>
+                    </div>
+                            <option value="mute-inf">
+                                🔇 Muet - Jusqu'à réactivation
+                            </option>
+                            <option value="pause">
+                                🔴 Pause (Couper complètement la connexion)
+                            </option>
+                        </select>
+                    </label>
                 </div>
             </section>
 
@@ -575,11 +662,36 @@
             <!-- DOSSIER MEMES -->
             <section style="margin-bottom: 16px">
                 <h3>Dossier Memes</h3>
-                <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
-                    <input type="text" id="setting-meme-folder" class="input flex-1" readonly placeholder="Documents/MemeDrop/memes (par défaut)">
-                    <button id="btn-choose-meme-folder" class="ghost" style="padding:6px 12px">📂 Parcourir</button>
+                <div
+                    style="
+                        display: flex;
+                        gap: 8px;
+                        align-items: center;
+                        margin-top: 8px;
+                    "
+                >
+                    <input
+                        type="text"
+                        id="setting-meme-folder"
+                        class="input flex-1"
+                        readonly
+                        placeholder="Documents/MemeDrop/memes (par défaut)"
+                    />
+                    <button
+                        id="btn-choose-meme-folder"
+                        class="ghost"
+                        style="padding: 6px 12px"
+                    >
+                        📂 Parcourir
+                    </button>
                 </div>
-                <p style="font-size:11px;color:var(--text-dim);margin-top:4px">
+                <p
+                    style="
+                        font-size: 11px;
+                        color: var(--text-dim);
+                        margin-top: 4px;
+                    "
+                >
                     Les nouveaux memes seront sauvegardés dans ce dossier.
                 </p>
             </section>
@@ -587,12 +699,43 @@
             <!-- EXPORT / IMPORT -->
             <section style="margin-bottom: 16px">
                 <h3>Sauvegarde</h3>
-                <div style="display:flex;gap:8px;margin-top:8px">
-                    <button id="btn-export-config" class="ghost" style="padding:6px 12px">📤 Exporter la config</button>
-                    <button id="btn-import-config" class="ghost" style="padding:6px 12px">📥 Importer la config</button>
+                <div style="display: flex; gap: 8px; margin-top: 8px">
+                    <button
+                        id="btn-export-config"
+                        class="ghost"
+                        style="padding: 6px 12px"
+                    >
+                        📤 Exporter la config
+                    </button>
+                    <button
+                        id="btn-import-config"
+                        class="ghost"
+                        style="padding: 6px 12px"
+                    >
+                        📥 Importer la config
+                    </button>
+                </div>
+                <p
+                    style="
+                        font-size: 11px;
+                        color: var(--text-dim);
+                        margin-top: 4px;
+                    "
+                >
+                    Exporte/importe tous les réglages, tags, favoris et groupes.
+                </p>
+            </section>
+
+            <!-- Reset -->
+            <section style="margin-bottom: 16px">
+                <h3>Réinitialisation</h3>
+                <div style="display: flex; gap: 8px; margin-top: 8px">
+                    <button id="btn-reset-app" class="danger-btn" style="flex:1">
+                        🗑️ Réinitialiser l'app
+                    </button>
                 </div>
                 <p style="font-size:11px;color:var(--text-dim);margin-top:4px">
-                    Exporte/importe tous les réglages, tags, favoris et groupes.
+                    Supprime tous les réglages, tags, memes cachés et favoris. Les fichiers ne sont pas supprimés.
                 </p>
             </section>
 
@@ -727,7 +870,11 @@
                     <button id="btn-drop-group" class="primary flex-1">
                         Drop
                     </button>
-                    <button id="btn-drop-all" class="danger-btn" style="flex:1;padding:6px">
+                    <button
+                        id="btn-drop-all"
+                        class="danger-btn"
+                        style="flex: 1; padding: 6px"
+                    >
                         📤 Tous
                     </button>
                 </div>
@@ -753,15 +900,68 @@
                 </div>
                 <div class="panel-body">
                     <div class="field">
-                        <label style="display:flex;flex-direction:column;gap:4px">
+                        <label
+                            style="
+                                display: flex;
+                                flex-direction: column;
+                                gap: 4px;
+                            "
+                        >
                             Cibles (Ctrl+clic pour multiples)
-                            <select id="panel-target" class="input" multiple size="4">
-                            </select>
-                            <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
-                                <input type="text" id="panel-target-add" class="input" placeholder="@pseudo" style="flex:1;min-width:100px;padding:4px 8px;font-size:11px">
-                                <button id="btn-add-target" class="ghost" style="padding:4px 8px;font-size:11px">+ Ajouter</button>
-                                <button id="btn-select-all-targets" class="ghost" style="font-size:10px;padding:2px 6px">Tout</button>
-                                <button id="btn-clear-targets" class="ghost" style="font-size:10px;padding:2px 6px">Effacer</button>
+                            <select
+                                id="panel-target"
+                                class="input"
+                                multiple
+                                size="4"
+                            ></select>
+                            <div
+                                style="
+                                    display: flex;
+                                    gap: 4px;
+                                    margin-top: 4px;
+                                    flex-wrap: wrap;
+                                "
+                            >
+                                <input
+                                    type="text"
+                                    id="panel-target-add"
+                                    class="input"
+                                    placeholder="@pseudo"
+                                    style="
+                                        flex: 1;
+                                        min-width: 100px;
+                                        padding: 4px 8px;
+                                        font-size: 11px;
+                                    "
+                                />
+                                <button
+                                    id="btn-add-target"
+                                    class="ghost"
+                                    style="padding: 4px 8px; font-size: 11px"
+                                >
+                                    + Ajouter
+                                </button>
+                                <button
+                                    id="btn-select-all-targets"
+                                    class="ghost"
+                                    style="font-size: 10px; padding: 2px 6px"
+                                >
+                                    Tout
+                                </button>
+                                <button
+                                    id="btn-clear-targets"
+                                    class="ghost"
+                                    style="font-size: 10px; padding: 2px 6px"
+                                >
+                                    Effacer
+                                </button>
+                                <button
+                                    id="btn-remove-target"
+                                    class="ghost danger"
+                                    style="font-size: 10px; padding: 2px 6px; color: #ff5e8a"
+                                >
+                                    ✕ Retirer
+                                </button>
                             </div>
                         </label>
                     </div>
@@ -773,6 +973,13 @@
                             class="input"
                             placeholder="Message avec le drop..."
                         />
+                        <div style="display:flex;gap:4px;margin-top:4px">
+                            <button id="btn-save-caption" class="ghost" style="font-size:10px;padding:2px 6px" title="Sauvegarder ce message">💾</button>
+                            <select id="caption-templates" class="input" style="font-size:10px;flex:1">
+                                <option value="">Messages sauvegardés...</option>
+                            </select>
+                        </div>
+                        <span id="caption-char-count" style="font-size:10px;color:var(--text-dim);text-align:right">0/80</span>
                     </div>
                     <div class="field-row">
                         <div class="field flex-1">
@@ -803,16 +1010,64 @@
                                 value="4"
                                 style="width: 100%"
                             />
-                            <span id="panel-duration-out" style="font-size:10px;text-align:center;display:block">4s</span>
+                            <span
+                                id="panel-duration-out"
+                                style="
+                                    font-size: 10px;
+                                    text-align: center;
+                                    display: block;
+                                "
+                                >4s</span
+                            >
                         </div>
                     </div>
                     <div class="field" style="margin-top: 8px">
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                            <input type="checkbox" id="panel-rain" /> Mode Pluie (Spam)
+                        <label
+                            style="
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                cursor: pointer;
+                            "
+                        >
+                            <input type="checkbox" id="panel-rain" /> Mode Pluie
+                            (Spam)
                         </label>
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px">
-                            <input type="checkbox" id="panel-local-preview" /> Aperçu local
+                        <label
+                            style="
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                cursor: pointer;
+                                margin-top: 4px;
+                            "
+                        >
+                            <input type="checkbox" id="panel-local-preview" />
+                            Aperçu local
                         </label>
+                        <label
+                            style="
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                cursor: pointer;
+                                margin-top: 4px;
+                            "
+                        >
+                            <input type="checkbox" id="panel-sync-audio-duration" />
+                            ⏱️ Sync durée avec l'audio
+                        </label>
+                        <label
+                            style="
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                cursor: pointer;
+                                margin-top: 4px;
+                            "
+                        >
+                            <input type="checkbox" id="panel-caption-below" />
+                            📝 Légende sous l'image
                     </div>
                 </div>
                 <div class="panel-status" id="panel-status"></div>
@@ -821,6 +1076,82 @@
                     <button class="primary btn-send" id="btn-send">
                         Envoyer le Drop
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Help Modal -->
+        <div id="help-modal" class="modal hidden">
+            <div class="modal-backdrop" id="help-modal-close"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>⌨️ Raccourcis Clavier</h3>
+                    <div class="modal-close" id="btn-help-close">✕</div>
+                </div>
+                <div class="modal-body">
+                    <table class="shortcuts-table">
+                        <tr>
+                            <td><kbd>Ctrl+V</kbd> / <kbd>Ctrl+Shift+V</kbd></td>
+                            <td>Coller une image depuis le presse-papier</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Ctrl+F</kbd></td>
+                            <td>Focus la barre de recherche</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Ctrl+Shift+X</kbd></td>
+                            <td>Renvoyer le dernier drop</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Ctrl+Shift+C</kbd></td>
+                            <td>Capture d'écran</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Ctrl+Shift+M</kbd></td>
+                            <td>Ouvrir les DevTools de l'overlay</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Clic droit</kbd> sur un audio</td>
+                            <td>Jouer l'audio localement</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Double-clic</kbd> sur le nom</td>
+                            <td>Renommer le meme</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Ctrl+clic</kbd> / <kbd>⌘+clic</kbd></td>
+                            <td>Sélection multiple de memes</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Suppr</kbd> / <kbd>Backspace</kbd></td>
+                            <td>Supprimer (cacher) les memes sélectionnés</td>
+                        </tr>
+                        <tr>
+                            <td><kbd>Échap</kbd></td>
+                            <td>Fermer le panneau / désélectionner</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Blacklist Modal -->
+        <div id="blacklist-modal" class="modal hidden">
+            <div class="modal-backdrop" id="blacklist-modal-close"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>🚫 Blacklist (memes cachés)</h3>
+                    <div class="modal-close" id="btn-blacklist-close">✕</div>
+                </div>
+                <div class="modal-body">
+                    <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px">
+                        Les memes blacklistés ne sont pas visibles dans ta grille et ne seront pas réimportés par le sync.
+                    </p>
+                    <div id="blacklist-list" class="blacklist-list"></div>
+                    <div style="display:flex;gap:8px;margin-top:12px">
+                        <button id="btn-blacklist-restore-all" class="primary" style="flex:1">♻️ Tout restaurer</button>
+                        <button id="btn-blacklist-clear-all" class="danger-btn" style="flex:1">🗑️ Vider la blacklist</button>
+                    </div>
                 </div>
             </div>
         </div>
