@@ -530,7 +530,8 @@ function connectWS() {
 
           if (data.buffer) {
             // Fichier envoyé en base64 → sauvegarder localement
-            const safeName = path.basename(data.name);
+            const safeName = path.basename(data.name).replace(/[^a-zA-Z0-9._-]/g, "_");
+            if (safeName === "_" || safeName === ".") break; // Nom vide après sanitization
             const filename = `shared_${Date.now()}_${safeName}`;
             const destPath = path.join(memeFolder, filename);
 
