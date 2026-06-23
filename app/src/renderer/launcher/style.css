@@ -237,6 +237,52 @@ body {
     border-radius: 3px;
 }
 
+/* ── List View ───────────────────────────────────────────────── */
+.grid.list-view {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.grid.list-view .meme-card {
+    display: flex;
+    flex-direction: row;
+    aspect-ratio: auto;
+    height: auto;
+    min-height: 40px;
+    padding: 4px 8px;
+    gap: 8px;
+    align-items: center;
+    border-radius: var(--radius-sm);
+}
+.grid.list-view .meme-card img,
+.grid.list-view .meme-card video {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+.grid.list-view .meme-card-name {
+    position: static;
+    background: none;
+    padding: 0;
+    font-size: 11px;
+    flex: 1;
+}
+.grid.list-view .meme-card-badge {
+    position: static;
+}
+.grid.list-view .meme-check {
+    position: static;
+}
+.grid.list-view .meme-card-fav-btn {
+    position: static;
+}
+.grid.list-view .audio-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+}
+
 .grid-empty {
     grid-column: 1 / -1;
     display: flex;

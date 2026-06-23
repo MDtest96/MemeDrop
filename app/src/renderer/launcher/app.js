@@ -2860,6 +2860,15 @@ document.getElementById("btn-random-drop")?.addEventListener("click", () => {
   toast(`🎲 Drop aléatoire : ${randomMeme.name}`);
 });
 
+// ── View toggle (grid/list) ────────────────────────────────────────
+let listViewMode = false;
+document.getElementById("btn-view-toggle")?.addEventListener("click", () => {
+  listViewMode = !listViewMode;
+  document.getElementById("btn-view-toggle").textContent = listViewMode ? "📄" : "📋";
+  document.getElementById("grid").classList.toggle("list-view", listViewMode);
+  toast(listViewMode ? "📄 Vue liste" : "📋 Vue grille");
+});
+
 document
   .getElementById("btn-send-collage")
   ?.addEventListener("click", async () => {
@@ -3477,6 +3486,24 @@ async function init() {
   document
     .getElementById("btn-clear-selection")
     ?.addEventListener("click", clearSelection);
+
+  document.getElementById("btn-tag-selected")?.addEventListener("click", async () => {
+    const paths = Array.from(selectedPaths);
+    if (paths.length === 0) return;
+    const tag = prompt("Tag \u00e0 ajouter/retirer (ex: fun) :");
+    if (!tag) return;
+    for (const p of paths) {
+      const current = allTagsMap[p] || [];
+      if (current.includes(tag)) {
+        await window.memedrop.setTags(p, current.filter(t => t !== tag));
+      } else {
+        await window.memedrop.setTags(p, [...current, tag]);
+      }
+    }
+    await loadTags();
+    renderGrid();
+    toast("\uD83C\uDFF7\uFE0F Tag \"" + tag + "\" appliqu\u00E9 \u00E0 " + paths.length + " meme(s)");
+  });
 
   // Audio play listener
   try {
