@@ -1501,9 +1501,33 @@ panelDuration?.addEventListener("input", () => {
 // Sync audio checkbox → désactiver le slider durée
 const syncAudioCb = document.getElementById("panel-sync-audio-duration");
 if (syncAudioCb && panelDuration && panelDurationOut) {
-  syncAudioCb.addEventListener("change", function() {
+  syncAudioCb.addEventListener("change", async function() {
     panelDuration.disabled = this.checked;
-    panelDurationOut.textContent = this.checked ? "60s (sync)" : currentDuration + "s";
+    if (this.checked && panelAudioSelect && panelAudioSelect.value) {
+      try {
+        const info = await window.memedrop.getAudioDuration(panelAudioSelect.value);
+        if (info && info.label) {
+          panelDurationOut.textContent = info.label + " (sync)";
+        } else {
+          panelDurationOut.textContent = "10s (sync)";
+        }
+      } catch {
+        panelDurationOut.textContent = "10s (sync)";
+      }
+    } else {
+      panelDurationOut.textContent = currentDuration + "s";
+    }
+  });
+  // Also update when audio selection changes
+  panelAudioSelect?.addEventListener("change", async function() {
+    if (syncAudioCb.checked && this.value) {
+      try {
+        const info = await window.memedrop.getAudioDuration(this.value);
+        if (info && info.label) {
+          panelDurationOut.textContent = info.label + " (sync)";
+        }
+      } catch {}
+    }
   });
 }
 
@@ -1794,7 +1818,19 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
       result = { ok: sentCount > 0, count: sentCount };
     } else {
       const syncDuration = document.getElementById("panel-sync-audio-duration")?.checked;
-      const effectiveDuration = syncDuration && audioPath ? 60 : currentDuration;
+      let effectiveDuration = currentDuration;
+      if (syncDuration && audioPath) {
+        try {
+          const info = await window.memedrop.getAudioDuration(audioPath);
+          if (info && info.duration > 0) {
+            effectiveDuration = info.duration; // Durée réelle de l'audio
+          } else {
+            effectiveDuration = 10; // fallback
+          }
+        } catch {
+          effectiveDuration = 10;
+        }
+      }
       result = await window.memedrop.sendDrop({
         target,
         filePath: selectedMeme.path,
