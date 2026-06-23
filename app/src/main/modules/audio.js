@@ -40,7 +40,7 @@ function setupAudio(store, app) {
   // ── Obtenir la durée approximative d'un fichier audio ───────────────
   ipcMain.handle("audio:getDuration", async (_e, filePath) => {
     try {
-      const stat = fs.statSync(filePath);
+      const stat = await fs.promises.stat(filePath);
       const ext = path.extname(filePath).toLowerCase();
       const size = stat.size;
       // Estimation basée sur la taille et le format

@@ -40,6 +40,7 @@ function getMimeFromExt(ext) {
     ".webp": "image/webp",
     ".mp4": "video/mp4",
     ".webm": "video/webm",
+    ".mov": "video/quicktime",
     ".mp3": "audio/mpeg",
     ".wav": "audio/wav",
     ".ogg": "audio/ogg",
@@ -542,36 +543,14 @@ function connectWS() {
               const base = dot >= 0 ? safeName.substring(0, dot) : safeName;
               const ext = dot >= 0 ? safeName.substring(dot) : "";
               filename = "shared_" + base + "_" + counter + ext;
-              destPath = path.join(memeFolder, filename);
-              counter++;
-            }
+              const destPath = path.join(memeFolder, filename);
 
-            // Vérifier si ce meme a déjà été importé (par nom original)
-            const existingFiles = fs.readdirSync(memeFolder);
-            const existingNames = new Set(
-              existingFiles
-                .filter(f => f.startsWith("shared_"))
-                .map(f => f.substring(7).replace(/_(\d+)(\.\w+)$/, "$2")) // retire _2, _3 avant l'extension
-            );
-            const displayName = safeName.replace(/_(\d+)(\.\w+)$/, "$2");
-            if (existingNames.has(displayName)) {
-              console.log("[ws] meme_sync skipped (already imported):", safeName);
-              break;
-            }
-
-            // Vérifier par hash SHA256 (premiers 4KB) pour déduplication fiable
-            try {
-              const incomingBuffer = Buffer.from(data.buffer, "base64");
-              const incomingHash = crypto.createHash("sha256").update(incomingBuffer.slice(0, 4096)).digest("hex");
-              const hashDuplicate = existingFiles.some(function(f) {
-                if (!f.startsWith("shared_")) return false;
-                try {
-                  const existingPath = path.join(memeFolder, f);
-                  const existingRaw = fs.readFileSync(existingPath);
-                  const existingHash = crypto.createHash("sha256").update(existingRaw.slice(0, 4096)).digest("hex");
-                  return existingHash === incomingHash;
-                } catch { return false; }
-              });
+              // Vérifier par hash SHA256 (premiers 4KB) pour déduplication
+              let hashDuplicate = false;
+              try {
+                const incomingBuffer = Buffer.from(data.buffer, "base64");
+                const incomingHash = crypto.createHash("sha256").update(incomingBuffer.slice(0, 4096)).digest("hex");
+                const existingFiles = fs.readdirSync(memeFolder);
               if (hashDuplicate) {
                 console.log("[ws] meme_sync skipped (duplicate hash):", safeName);
                 break;

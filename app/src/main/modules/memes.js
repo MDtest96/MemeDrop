@@ -83,6 +83,10 @@ function setupMemes(store, app) {
     const hidden = new Set(store.get("hiddenMemes") || []);
     hidden.delete(filePath);
     store.set("hiddenMemes", Array.from(hidden));
+    // Nettoyer aussi le nom correspondant dans hiddenMemeNames
+    const hiddenNames = new Set(store.get("hiddenMemeNames") || []);
+    hiddenNames.delete(path.basename(filePath));
+    store.set("hiddenMemeNames", Array.from(hiddenNames));
     for (const w of BrowserWindow.getAllWindows()) {
       if (!w.isDestroyed()) w.webContents.send("library:changed");
     }

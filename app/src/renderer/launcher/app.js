@@ -1473,16 +1473,19 @@ async function renderAudioSelect(selectedPath) {
     // Ajouter la durée de manière asynchrone
     panelAudioSelect.appendChild(opt);
   }
-  // Récupérer les durées pour chaque audio
+  // Récupérer les durées en parallèle
+  const promises = [];
   for (const opt of panelAudioSelect.options) {
     if (!opt.value) continue;
-    try {
-      const info = await window.memedrop.getAudioDuration(opt.value);
-      if (info && info.label !== "?") {
-        opt.textContent = opt.textContent + " (" + info.label + ")";
-      }
-    } catch {}
+    promises.push(
+      window.memedrop.getAudioDuration(opt.value).then(function(info) {
+        if (info && info.label !== "?") {
+          opt.textContent = opt.textContent + " (" + info.label + ")";
+        }
+      }).catch(function() {})
+    );
   }
+  await Promise.all(promises);
 }
 
 // Section G: Volume
