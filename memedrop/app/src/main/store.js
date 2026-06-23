@@ -41,7 +41,15 @@ const store = new Store({
       favFilter: "all",
       sort: "name",
       query: "",
+      dateFilter: "all",
     },
+    hardwareAcceleration: false,
+    launcherTheme: "classic",
+    thumbnailShape: "square",
+    customCSS: null,
+    slideshowInterval: 5,
+    theme: "classic",
+    launcherTheme: "classic",
   },
 });
 

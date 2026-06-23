@@ -178,22 +178,31 @@ function setupMemes(store, app) {
     return fs
       .readdirSync(folder)
       .map((f) => {
+        const fullPath = path.join(folder, f);
+        // Get file creation time for date filtering
+        let addedAt = null;
+        try {
+          const stat = fs.statSync(fullPath);
+          addedAt = stat.birthtime || stat.mtime;
+        } catch {}
         const ext = path.extname(f).toLowerCase();
         if (validExts.includes(ext)) {
           return {
             name: path.parse(f).name,
-            path: path.join(folder, f),
+            path: fullPath,
             kind: kindMap[ext] || "image",
+            addedAt,
           };
         }
         // Extensionless file — try magic byte detection
         if (!ext) {
-          const detected = probeFileKind(path.join(folder, f));
+          const detected = probeFileKind(fullPath);
           if (detected) {
             return {
               name: path.parse(f).name,
-              path: path.join(folder, f),
+              path: fullPath,
               kind: detected.kind,
+              addedAt,
             };
           }
         }
@@ -363,6 +372,62 @@ function setupMemes(store, app) {
     } catch (e) {
       return { url, kind: "image", mime: "image/jpeg", unresolved: true };
     }
+  });
+
+  // ── Import file from drag & drop ────────────────────────────────────
+  ipcMain.handle("memes:importFile", async (_e, sourcePath) => {
+    try {
+      const folder = memeFolder();
+      if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
+      const ext = path.extname(sourcePath).toLowerCase();
+      const baseName = path.parse(sourcePath).name;
+      // Sanitize filename
+      const safeName = baseName.replace(/[<>:"\\|?*#@]/g, "_");
+      const destName = ext ? `${safeName}${ext}` : safeName;
+      let destPath = path.join(folder, destName);
+      // Handle duplicate names
+      let counter = 1;
+      while (fs.existsSync(destPath)) {
+        destPath = path.join(folder, `${safeName}_${counter}${ext}`);
+        counter++;
+      }
+      fs.copyFileSync(sourcePath, destPath);
+      return {
+        ok: true,
+        meme: {
+          name: path.parse(destPath).name,
+          path: destPath,
+          kind: kindMap[ext] || "image",
+        },
+      };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  // ── Check if meme folder exists ─────────────────────────────────────
+  ipcMain.handle("memes:folderExists", () => {
+    try {
+      const folder = memeFolder();
+      return { ok: true, exists: fs.existsSync(folder) };
+    } catch {
+      return { ok: false, exists: false };
+    }
+  });
+
+  // ── Paginated meme listing for lazy loading ─────────────────────────
+  ipcMain.handle("memes:listPaginated", (_e, offset = 0, limit = 50) => {
+    const folder = memeFolder();
+    if (!fs.existsSync(folder))
+      return { memes: [], total: 0, hasMore: false };
+    const hidden = new Set(store.get("hiddenMemes") || []);
+    const hiddenNames = new Set(store.get("hiddenMemeNames") || []);
+    const all = scanMemeFolder(folder).filter(
+      (m) => m !== null && !hidden.has(m.path) && !hiddenNames.has(path.basename(m.path)),
+    );
+    const total = all.length;
+    const memes = all.slice(offset, offset + limit);
+    return { memes, total, hasMore: offset + limit < total };
   });
 }
 

@@ -132,6 +132,7 @@ document.addEventListener('mouseup', () => {
 // ── Pop sound ────────────────────────────────────────────────────────────
 // Single shared AudioContext — never closed, resume on each play
 let _audioCtx = null;
+let _audioCtxInitialized = false;
 function getAudioCtx() {
   if (!_audioCtx) {
     _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -140,9 +141,24 @@ function getAudioCtx() {
   return _audioCtx;
 }
 
+// Resume AudioContext on first user interaction (autoplay policy)
+function ensureAudioCtx() {
+  if (_audioCtxInitialized) return;
+  _audioCtxInitialized = true;
+  const resume = () => {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    document.removeEventListener('click', resume);
+    document.removeEventListener('keydown', resume);
+  };
+  document.addEventListener('click', resume, { once: true });
+  document.addEventListener('keydown', resume, { once: true });
+}
+
 function playPop(volume) {
   try {
     const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') { ctx.resume().catch(() => {}); return; }
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);

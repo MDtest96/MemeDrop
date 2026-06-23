@@ -70,7 +70,21 @@ app.setPath(
   path.join(app.getPath("appData"), "MemeDrop-Unified-Agent"),
 );
 
-app.disableHardwareAcceleration();
+// Allow enabling hardware acceleration via config
+// Must be read before electron-store initializes (config.json may not exist yet)
+(function initGPU() {
+  try {
+    const configPath = path.join(app.getPath("userData"), "config.json");
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      if (config.hardwareAcceleration) {
+        console.log("[gpu] hardware acceleration enabled via config");
+        return; // skip disableHardwareAcceleration
+      }
+    }
+  } catch {}
+  app.disableHardwareAcceleration();
+})();
 app.commandLine.appendSwitch("disable-background-timer-throttling");
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 
@@ -336,6 +350,8 @@ function createTray() {
 let ws = null;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
+let unreadDrops = 0;
+const dedupCache = new Map(); // sha256 -> path (OP-3)
 let connState = {
   status: "disconnected",
   code: null,
@@ -379,7 +395,7 @@ function connectWS() {
   setState({ status: "connecting", code: null, user: null, links: null });
 
   try {
-    ws = new WebSocket(url);
+    ws = new WebSocket(url, { perMessageDeflate: true });
   } catch (err) {
     console.error("[ws] construct error:", err.message);
     scheduleReconnect();
@@ -495,6 +511,11 @@ function connectWS() {
         break;
       case "drop":
         recordHistory(msg);
+        unreadDrops++;
+        if (launcherWin && !launcherWin.isDestroyed()) {
+          launcherWin.webContents.send("drop:received");
+          try { launcherWin.setBadgeCount(unreadDrops); } catch {}
+        }
         if (isMuted()) break; // mode tranquille : on note le drop mais on ne l'affiche pas
         if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
         startTopGuard();
@@ -544,24 +565,15 @@ function connectWS() {
               counter++;
             }
 
-            // Hash dedup (SHA256 premiers 4KB)
+            // Hash dedup via cache (OP-3) — evite de relire tous les fichiers
             try {
-              var incomingBuffer = Buffer.from(data.buffer, "base64");
-              var incomingHash = crypto.createHash("sha256").update(incomingBuffer.slice(0, 4096)).digest("hex");
-              var existingFiles = fs.readdirSync(memeFolder);
-              var hashDuplicate = existingFiles.some(function(f) {
-                if (!f.startsWith("shared_")) return false;
-                try {
-                  var existingPath = path.join(memeFolder, f);
-                  var existingRaw = fs.readFileSync(existingPath);
-                  var existingHash = crypto.createHash("sha256").update(existingRaw.slice(0, 4096)).digest("hex");
-                  return existingHash === incomingHash;
-                } catch { return false; }
-              });
-              if (hashDuplicate) {
+              const incomingBuffer = Buffer.from(data.buffer, "base64");
+              const incomingHash = crypto.createHash("sha256").update(incomingBuffer.slice(0, 4096)).digest("hex");
+              if (dedupCache.has(incomingHash)) {
                 console.log("[ws] meme_sync skipped (duplicate hash):", safeName);
                 break;
               }
+              dedupCache.set(incomingHash, destPath);
             } catch (e) {
               console.warn("[ws] hash check failed:", e.message);
             }
@@ -618,6 +630,27 @@ function connectWS() {
       case "ping":
         ws.send(JSON.stringify({ type: "pong" }));
         break;
+      case "meme_ref":
+        try {
+          const memeFolder = getMemeFolder(store, app);
+          const foundPath = findLocalFileByHash(msg.hash, memeFolder);
+          if (foundPath) {
+            if (overlayWin && !overlayWin.isDestroyed()) {
+              overlayWin.webContents.send("drop", {
+                type: "drop",
+                media: { url: "file:///" + foundPath.replace(/\\/g, "/"), kind: msg.kind || "image", name: msg.name || "shared" },
+                caption: msg.caption || null,
+                from: msg.from || null,
+                ts: Date.now(),
+              });
+            }
+          } else {
+            ws.send(JSON.stringify({ type: "meme_ref_miss", hash: msg.hash }));
+          }
+        } catch (err) {
+          console.error("[ws] meme_ref error:", err.message);
+        }
+        break;
     }
   });
 
@@ -634,11 +667,33 @@ function connectWS() {
 
 function scheduleReconnect() {
   reconnectAttempts++;
-  const delay = Math.min(
+  let delay = Math.min(
     30_000,
     1000 * Math.pow(1.6, Math.min(reconnectAttempts, 8)),
   );
+  // Jitter aleatoire ±50% pour eviter le thundering herd
+  delay = Math.floor(delay * (0.5 + Math.random() * 0.5));
   reconnectTimer = setTimeout(connectWS, delay);
+}
+
+// ── Find local file by SHA256 hash (OP-21) ────────────────────────────
+function findLocalFileByHash(hash, folder) {
+  try {
+    for (const f of fs.readdirSync(folder)) {
+      const filePath = path.join(folder, f);
+      try {
+        const raw = fs.readFileSync(filePath);
+        const fileHash = crypto.createHash("sha256").update(raw.slice(0, 4096)).digest("hex");
+        if (fileHash === hash) return filePath;
+      } catch {}
+    }
+  } catch {}
+  // Fallback: check dedupCache
+  if (dedupCache.has(hash)) {
+    const cachedPath = dedupCache.get(hash);
+    if (fs.existsSync(cachedPath)) return cachedPath;
+  }
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -870,6 +925,83 @@ if (!gotLock) {
   const startedHidden =
     process.argv.includes("--hidden") ||
     app.getLoginItemSettings().wasOpenedAtLogin;
+
+  // ── Notification badge (unread drops count) ────────────────────────────
+  ipcMain.handle("drops:getUnread", () => unreadDrops);
+  ipcMain.handle("drops:resetUnread", () => { unreadDrops = 0; return true; });
+
+  // ── History search ─────────────────────────────────────────────────────
+  ipcMain.handle("history:search", (_e, query, targetFilter) => {
+    try {
+      const history = store.get("dropHistory") || [];
+      let filtered = history;
+      if (query) {
+        const q = query.toLowerCase();
+        filtered = filtered.filter((h) =>
+          (h.caption || "").toLowerCase().includes(q),
+        );
+      }
+      if (targetFilter) {
+        filtered = filtered.filter((h) => h.target === targetFilter);
+      }
+      return { ok: true, history: filtered };
+    } catch (err) {
+      return { ok: false, error: err.message, history: [] };
+    }
+  });
+
+  // ── Custom CSS import ───────────────────────────────────────────────────
+  ipcMain.handle("tools:importCSS", async (_e, cssContent) => {
+    try {
+      store.set("customCSS", cssContent);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  // ── Drop to all users ───────────────────────────────────────────────────
+  ipcMain.handle("drop:sendToAll", async (_e, payload) => {
+    try {
+      // Reuse the sendDrop logic but target "@everyone"
+      const { sendDrop } = require("./modules/drops");
+      // Fallback: just send to each connected user
+      const users = store.get("cachedUsers");
+      if (users?.users) {
+        for (const user of users.users) {
+          await sendDrop({ ...payload, target: `@${user.username}` });
+        }
+      }
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  // ── Stats ───────────────────────────────────────────────────────────────
+  ipcMain.handle("stats:get", () => {
+    try {
+      const history = store.get("dropHistory") || [];
+      const totalSent = history.length;
+      const memes = store.get("tags") || {};
+      const totalMemes = Object.keys(memes).length;
+      const favorites = store.get("favorites") || [];
+      return {
+        ok: true,
+        stats: {
+          totalSent,
+          totalMemes,
+          totalFavorites: favorites.length,
+          uptime: Math.floor(process.uptime()),
+        },
+      };
+    } catch {
+      return { ok: false, stats: null };
+    }
+  });
+
+  // ── Increment unread on each received drop ─────────────────────────────
+  // (handled directly in the ws.on("message") handler inside connectWS)
 
   app.whenReady().then(() => {
     // Reconcile the OS login item with the stored setting on every launch, so

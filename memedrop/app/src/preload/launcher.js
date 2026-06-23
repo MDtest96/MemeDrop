@@ -78,6 +78,16 @@ contextBridge.exposeInMainWorld("memedrop", {
     ipcRenderer.on("library:changed", fn);
     return () => ipcRenderer.off("library:changed", fn);
   },
+  onLibraryChanged: (callback) => {
+    // Clear preview cache when library changes
+    previewCache.clear();
+    const fn = () => {
+      previewCache.clear();
+      callback();
+    };
+    ipcRenderer.on("library:changed", fn);
+    return () => ipcRenderer.off("library:changed", fn);
+  },
   onAudioPlay: (callback) => {
     const fn = (_e, filePath) => callback(filePath);
     ipcRenderer.on("audio:play", fn);
@@ -127,4 +137,39 @@ contextBridge.exposeInMainWorld("memedrop", {
     ipcRenderer.on("update-state", fn);
     return () => ipcRenderer.off("update-state", fn);
   },
+
+  // Drag & drop from Explorer
+  importFile: (sourcePath) => ipcRenderer.invoke("memes:importFile", sourcePath),
+
+  // Folder exists check
+  folderExists: () => ipcRenderer.invoke("memes:folderExists"),
+
+  // Lazy loading / pagination
+  listMemesPaginated: (offset, limit) =>
+    ipcRenderer.invoke("memes:listPaginated", offset, limit),
+
+  // Notification badge
+  getUnreadDrops: () => ipcRenderer.invoke("drops:getUnread"),
+  resetUnreadDrops: () => ipcRenderer.invoke("drops:resetUnread"),
+  onDropReceived: (callback) => {
+    const fn = () => callback();
+    ipcRenderer.on("drop:received", fn);
+    return () => ipcRenderer.off("drop:received", fn);
+  },
+
+  // History search
+  searchHistory: (query, targetFilter) =>
+    ipcRenderer.invoke("history:search", query, targetFilter),
+
+  // Custom CSS theme import
+  importCSS: (cssContent) => ipcRenderer.invoke("tools:importCSS", cssContent),
+
+  // Slideshow
+  getSlideshowMemes: () => ipcRenderer.invoke("memes:list"),
+
+  // Drop to all
+  sendDropToAll: (payload) => ipcRenderer.invoke("drop:sendToAll", payload),
+
+  // Stats
+  getStats: () => ipcRenderer.invoke("stats:get"),
 });

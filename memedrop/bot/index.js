@@ -24,7 +24,7 @@ const httpServer = http.createServer((req, res) => {
   res.end();
 });
 
-const wss = new WebSocketServer({ server: httpServer });
+const wss = new WebSocketServer({ server: httpServer, perMessageDeflate: true });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Linkage model
@@ -62,6 +62,36 @@ const groups = new Map(
     new Map(Object.entries(v)),
   ]),
 );
+
+// Heartbeat — ping/pong toutes les 30s, ferme les connexions mortes
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) return ws.terminate();
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30_000);
+
+// Hash registry — SHA256 -> Set<userId> pour eviter de renvoyer les memes
+const memeRegistry = new Map();
+
+// Rate limiter — scope module (pas dans le callback connection !)
+const syncRateLimit = new Map(); // userId -> { count, resetAt }
+const SYNC_RATE = 10;
+const SYNC_WINDOW = 60_000;
+const requestCooldown = new Map(); // userId -> timestamp
+
+function checkRateLimit(userId) {
+  const entry = syncRateLimit.get(userId) || { count: 0, resetAt: Date.now() + SYNC_WINDOW };
+  if (Date.now() > entry.resetAt) {
+    entry.count = 0;
+    entry.resetAt = Date.now() + SYNC_WINDOW;
+  }
+  if (entry.count >= SYNC_RATE) return false;
+  entry.count++;
+  syncRateLimit.set(userId, entry);
+  return true;
+}
 
 const MAX_FAVORITES = 10;
 const MAX_GROUPS = 10;
@@ -237,6 +267,8 @@ async function pushLinksUpdate(userId) {
 }
 
 wss.on("connection", (ws) => {
+  ws.isAlive = true;
+  ws.on("pong", () => { ws.isAlive = true; });
   const code = generatePairingCode();
   pendingOverlays.set(code, ws);
   wsMeta.set(ws, { code, userId: null, username: null });
@@ -434,14 +466,16 @@ wss.on("connection", (ws) => {
 
       if (targetStr === "everyone" || targetStr === "@everyone") {
         let sentCount = 0;
+        const dedupSent = new Set();
         for (const [uid, uLink] of userLinks) {
-          if (uid !== meta.userId) {
+          if (uid !== meta.userId && !dedupSent.has(uid)) {
             for (const sock of uLink.sockets) {
               if (sock.readyState === 1) {
                 sendJson(sock, payload);
                 sentCount++;
               }
             }
+            dedupSent.add(uid);
           }
         }
         sendJson(ws, {
@@ -508,8 +542,36 @@ wss.on("connection", (ws) => {
         return;
       }
 
+      // Check hash registry: si le destinataire a deja le fichier, envoyer une ref (OP-21)
+      const dropMedia = msg.media;
+      let refHash = null;
+      if (dropMedia?.data) {
+        try {
+          const rawBuffer = Buffer.from(dropMedia.data, "base64");
+          refHash = crypto.createHash("sha256").update(rawBuffer.slice(0, 4096)).digest("hex");
+        } catch {}
+      }
       for (const sock of targetLink.sockets) {
-        if (sock.readyState === 1) sendJson(sock, payload);
+        if (sock.readyState !== 1) continue;
+        if (refHash && memeRegistry.get(refHash)?.has(targetUserId)) {
+          // Envoyer juste la ref (64 bytes au lieu du blob complet)
+          sendJson(sock, {
+            type: "meme_ref",
+            hash: refHash,
+            name: dropMedia?.name || "unknown",
+            kind: dropMedia?.kind || "image",
+            caption: msg.caption || null,
+            from: { id: meta.userId, username: meta.username },
+            ts: Date.now(),
+          });
+        } else {
+          sendJson(sock, payload);
+        }
+      }
+      // Enregistrer que le destinataire a maintenant le hash
+      if (refHash) {
+        if (!memeRegistry.has(refHash)) memeRegistry.set(refHash, new Set());
+        memeRegistry.get(refHash).add(targetUserId);
       }
       sendJson(ws, {
         type: "quick_drop_ack",
@@ -522,29 +584,45 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    // ── Meme sync: un utilisateur partage un nouveau meme à tous ───────────
+    // ── Meme sync: un utilisateur partage un nouveau meme a tous ───────────
     if (msg.type === "meme_sync") {
       const meta = wsMeta.get(ws);
       if (!meta?.userId) {
         sendJson(ws, { type: "meme_sync_ack", ok: false, error: "Not linked" });
         return;
       }
+      // Rate limiting: max 10 syncs/min
+      if (!checkRateLimit(meta.userId)) {
+        sendJson(ws, { type: "meme_sync_ack", ok: false, error: "Rate limit" });
+        return;
+      }
+      // Register hash in registry (OP-21)
+      if (msg.data?.buffer) {
+        try {
+          const rawBuffer = Buffer.from(msg.data.buffer, "base64");
+          const hash = crypto.createHash("sha256").update(rawBuffer.slice(0, 4096)).digest("hex");
+          if (!memeRegistry.has(hash)) memeRegistry.set(hash, new Set());
+          memeRegistry.get(hash).add(meta.userId);
+        } catch {}
+      }
       const memePayload = {
         type: "meme_sync",
-        data: msg.data, // { name, path, kind, buffer?, url?, mime? }
+        data: msg.data,
         from: { id: meta.userId, username: meta.username },
         ts: Date.now(),
       };
-      // Broadcast to ALL other connected users
+      // Broadcast with pooling (OP-11)
       let sentCount = 0;
+      const dedupSent = new Set();
       for (const [uid, uLink] of userLinks) {
-        if (uid !== meta.userId) {
+        if (uid !== meta.userId && !dedupSent.has(uid)) {
           for (const sock of uLink.sockets) {
             if (sock.readyState === 1) {
               sendJson(sock, memePayload);
               sentCount++;
             }
           }
+          dedupSent.add(uid);
         }
       }
       sendJson(ws, { type: "meme_sync_ack", ok: true, sent: sentCount });
@@ -561,6 +639,13 @@ wss.on("connection", (ws) => {
         sendJson(ws, { type: "library_sync_request_ack", ok: false, error: "Not linked" });
         return;
       }
+      // Anti-burst cooldown (OP-19): 5 min entre deux demandes
+      const lastReq = requestCooldown.get(meta.userId) || 0;
+      if (Date.now() - lastReq < 5 * 60_000) {
+        sendJson(ws, { type: "library_sync_request_ack", ok: false, error: "Cooldown" });
+        return;
+      }
+      requestCooldown.set(meta.userId, Date.now());
       // Demandeur = meta.userId, on broadcast aux AUTRES uniquement
       let asked = 0;
       for (const [uid, uLink] of userLinks) {

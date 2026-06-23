@@ -1,5 +1,37 @@
 # Changelog — MemeDrop
 
+## v1.5.0 (2026-06-23)
+
+### ✨ Nouveautés
+- **Diaporama** : bouton ▶ dans la barre pour lancer un slideshow plein écran
+- **Filtre par date** : filtrer les memes par date d'ajout (Aujourd'hui/Cette semaine/Ce mois)
+- **Forme des miniatures** : choisir entre carré, arrondi, cercle ou large
+- **Mode sombre/clair** : thème du launcher configurable dans les settings
+- **Tooltip au survol** : aperçu agrandi au survol des cartes dans la grille
+- **CSS custom** : importer son propre fichier CSS de thème
+- **Accélération GPU** : toggle dans settings (nécessite redémarrage)
+- **Badge notifications** : compteur de drops reçus sur la barre des tâches
+- **Historique recherchable** : recherche par texte + filtre par cible
+- **Drop à tous** : envoyer un meme à tous les utilisateurs connectés
+- **Statistiques** : drops envoyés, memes, uptime
+- **APNG support** : détection des fichiers .apng
+
+### 🔧 Corrections
+- **Fermeture overlay** : zone cliquable agrandie via `::before`
+- **Son pop** : AudioContext débloqué au premier clic utilisateur
+- **GPU** : option pour réactiver l'accélération matérielle
+- **Giphy** : crossOrigin anonyme pour éviter les blocages CSP
+- **Dossier introuvable** : message d'erreur clair dans la grille
+- **Fichiers sans extension** : détection par magic bytes
+- **Légende sous l'image** : flex column dans l'overlay
+- **Réactions émojis** : retirées des drops overlay
+
+### 🧪 Tests
+- 204 tests unitaires, 19 fichiers
+- Nouveaux tests : tags module (6 tests)
+
+---
+
 ## v1.4.7 (2026-06-23)
 
 ### ✨ Nouveautés

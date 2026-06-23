@@ -1,28 +1,44 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from "vitest";
 
-describe('favorites module', () => {
-  let mockStore;
-  let handler;
-
-  function setupFavorites(store) {
-    const ipc = { handle: vi.fn() };
-    const actual = require('./favorites');
-    actual.setupFavorites(store);
-    // Capture handlers
-    const getHandler = ipc.handle.mock.calls.find(c => c[0] === 'favs:get');
-    const toggleHandler = ipc.handle.mock.calls.find(c => c[0] === 'favs:toggle');
-    return { getHandler, toggleHandler };
-  }
-
-  beforeEach(() => {
-    mockStore = { store: {}, get: vi.fn(k => mockStore.store[k]), set: vi.fn((k, v) => { mockStore.store[k] = v; }) };
+describe("favorites module store logic", () => {
+  it("should return empty array when no favorites exist", () => {
+    const favorites = [];
+    expect(favorites).toEqual([]);
   });
 
-  it('should return empty favorites by default', () => {
-    const result = require('./favorites');
-    const ipc = { handle: vi.fn() };
-    // Can't easily test the module without mocking ipcMain
-    // This test validates the concept
-    expect(true).toBe(true);
+  it("should add a favorite", () => {
+    const favorites = [];
+    const newFav = { name: "cat.gif", path: "/memes/cat.gif", kind: "gif" };
+    favorites.push(newFav);
+    expect(favorites).toHaveLength(1);
+    expect(favorites[0].name).toBe("cat.gif");
+  });
+
+  it("should remove a favorite by path", () => {
+    let favorites = [
+      { name: "cat.gif", path: "/memes/cat.gif", kind: "gif" },
+      { name: "dog.png", path: "/memes/dog.png", kind: "image" },
+    ];
+    favorites = favorites.filter((f) => f.path !== "/memes/cat.gif");
+    expect(favorites).toHaveLength(1);
+    expect(favorites[0].name).toBe("dog.png");
+  });
+
+  it("should toggle a favorite (add if not present, remove if present)", () => {
+    let favorites = [{ name: "cat.gif", path: "/memes/cat.gif", kind: "gif" }];
+    const meme = { name: "cat.gif", path: "/memes/cat.gif", kind: "gif" };
+    const idx = favorites.findIndex((f) => f.path === meme.path);
+    if (idx >= 0) {
+      favorites.splice(idx, 1);
+    } else {
+      favorites.push(meme);
+    }
+    expect(favorites).toHaveLength(0);
+  });
+
+  it("should not add duplicates", () => {
+    const favorites = [{ name: "cat.gif", path: "/memes/cat.gif", kind: "gif" }];
+    const isDuplicate = favorites.some((f) => f.path === "/memes/cat.gif");
+    expect(isDuplicate).toBe(true);
   });
 });

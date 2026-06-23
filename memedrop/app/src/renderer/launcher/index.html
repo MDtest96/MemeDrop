@@ -52,6 +52,9 @@
                 <button class="tb-btn" id="btn-help" title="Raccourcis clavier">
                     ❓
                 </button>
+                <button class="tb-btn" id="btn-slideshow" title="Diaporama">
+                    ▶
+                </button>
             </div>
         </div>
 
@@ -196,6 +199,12 @@
                             size="3"
                             title="Tags"
                         ></select>
+                        <select id="triage-date-select" class="triage-select" title="Date">
+                            <option value="all">Toutes les dates</option>
+                            <option value="today">Aujourd'hui</option>
+                            <option value="week">Cette semaine</option>
+                            <option value="month">Ce mois</option>
+                        </select>
                         <input
                             type="text"
                             id="triage-search"
@@ -531,6 +540,17 @@
                     >
                         <input type="checkbox" id="setting-spotlightOnDrop" />
                         Assombrir l'écran (Spotlight) lors d'un Drop
+                    </label>
+                    <label
+                        style="
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            cursor: pointer;
+                        "
+                    >
+                        <input type="checkbox" id="setting-hardware-accel" />
+                        ⚡ Accélération GPU (redémarrage requis)
                     </label>
                     <label
                         style="display: flex; flex-direction: column; gap: 4px"
@@ -1162,6 +1182,18 @@
                 <p>Glissez vos memes ici</p>
             </div>
         </div>
+
+    <!-- Slideshow overlay -->
+    <div id="slideshow-overlay" class="hidden" style="position:fixed;inset:0;z-index:9999;background:#000;display:flex;align-items:center;justify-content:center;flex-direction:column">
+        <img id="slideshow-img" style="max-width:90vw;max-height:80vh;object-fit:contain;border-radius:8px" />
+        <div id="slideshow-counter" style="color:rgba(255,255,255,0.5);font-size:14px;margin-top:8px"></div>
+        <div style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:12px">
+            <button id="slideshow-prev" class="ghost" style="font-size:20px;padding:8px 16px">◀</button>
+            <button id="slideshow-play" class="ghost" style="font-size:20px;padding:8px 16px">⏸</button>
+            <button id="slideshow-next" class="ghost" style="font-size:20px;padding:8px 16px">▶</button>
+            <button id="slideshow-close" class="ghost" style="font-size:20px;padding:8px 16px">✕</button>
+        </div>
+    </div>
 
         <script src="./app.js" type="module"></script>
     </body>

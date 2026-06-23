@@ -450,6 +450,19 @@ async function deleteSelected() {
 async function loadMemes() {
   try {
     allMemes = await window.memedrop.listMemes();
+    // Check if folder exists
+    const folderCheck = await window.memedrop.folderExists().catch(() => ({ exists: true }));
+    if (gridEmpty) {
+      if (!folderCheck?.exists) {
+        gridEmpty.textContent = "📁 Dossier memes introuvable — Configurez-le dans Settings";
+        gridEmpty.style.display = "block";
+      } else if (!allMemes || allMemes.length === 0) {
+        gridEmpty.textContent = "📂 Aucun meme — Ajoutez des fichiers dans le dossier MemeDrop/memes";
+        gridEmpty.style.display = "block";
+      } else {
+        gridEmpty.style.display = "none";
+      }
+    }
   } catch (e) {
     console.error("Failed to load memes", e);
   }
@@ -470,6 +483,25 @@ async function renderGrid() {
   const types = triageState.typeFilters;
   if (types.length > 0) {
     filtered = filtered.filter((m) => types.includes(m.kind));
+  }
+  // Filter by date
+  const dateFilter = triageState.dateFilter;
+  if (dateFilter && dateFilter !== "all") {
+    const now = new Date();
+    let startDate;
+    if (dateFilter === "today") {
+      startDate = new Date(now); startDate.setHours(0,0,0,0);
+    } else if (dateFilter === "week") {
+      startDate = new Date(now); startDate.setDate(now.getDate() - now.getDay()); startDate.setHours(0,0,0,0);
+    } else if (dateFilter === "month") {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    if (startDate) {
+      filtered = filtered.filter((m) => {
+        if (!m.addedAt) return false;
+        return new Date(m.addedAt) >= startDate;
+      });
+    }
   }
   if (activeTagFilter) {
     if (activeTagFilter.startsWith("!")) {
@@ -621,6 +653,7 @@ async function renderGrid() {
           }
           el.loading = "lazy";
           card.appendChild(el);
+          setupTooltip(card, "file:///" + meme.path.replace(/\\/g, "/"));
         } else if (meme.kind === "video" || meme.kind === "gif") {
           // Fallback: utiliser le chemin local directement (Twitter/X, etc.)
           const fallbackUrl = `file:///${encodeURI(meme.path.replace(/\\/g, "/"))}`;
@@ -638,6 +671,7 @@ async function renderGrid() {
           el.loading = "lazy";
           el.style.opacity = "0.8";
           card.appendChild(el);
+          setupTooltip(card, "file:///" + meme.path.replace(/\\/g, "/"));
         }
       } catch (e) {
         // silent
@@ -787,13 +821,102 @@ document.querySelectorAll(".filter-btn").forEach((btn) => {
 
 // ── Toolbar buttons ─────────────────────────────────────────────────────
 document.getElementById("btn-refresh")?.addEventListener("click", loadMemes);
-document.getElementById("btn-sync-library")?.addEventListener("click", async () => {
-  if (!window.memedrop.syncAllMemes) return toast("Sync non disponible", "error");
-  toast("📤 Synchronisation de la bibliothèque…");
-  const r = await window.memedrop.syncAllMemes(true);
-  if (r && r.ok) toast(`📤 ${r.count} meme(s) partagé(s)`);
-  else toast("❌ Sync échoué", "error");
+// ── Slideshow ──────────────────────────────────────────────────────
+let slideshowInterval = null;
+let slideshowIndex = 0;
+let slideshowMemes = [];
+
+function startSlideshow(memes) {
+  if (!memes || memes.length === 0) return toast("Aucun meme à afficher", "error");
+  slideshowMemes = memes;
+  slideshowIndex = 0;
+  const overlay = document.getElementById("slideshow-overlay");
+  if (!overlay) return;
+  overlay.classList.remove("hidden");
+  showSlide(0);
+  if (slideshowInterval) clearInterval(slideshowInterval);
+  slideshowInterval = setInterval(() => nextSlide(), 5000);
+}
+
+function showSlide(index) {
+  const img = document.getElementById("slideshow-img");
+  const counter = document.getElementById("slideshow-counter");
+  if (!img || !slideshowMemes[index]) return;
+  const meme = slideshowMemes[index];
+  img.src = "file:///" + meme.path.replace(/\\/g, "/");
+  if (counter) counter.textContent = `${index + 1} / ${slideshowMemes.length}`;
+}
+
+function nextSlide() {
+  slideshowIndex = (slideshowIndex + 1) % slideshowMemes.length;
+  showSlide(slideshowIndex);
+}
+
+function prevSlide() {
+  slideshowIndex = (slideshowIndex - 1 + slideshowMemes.length) % slideshowMemes.length;
+  showSlide(slideshowIndex);
+}
+
+document.getElementById("btn-slideshow")?.addEventListener("click", () => {
+  const filtered = allMemes; // Use current loaded memes
+  startSlideshow(filtered);
 });
+document.getElementById("slideshow-prev")?.addEventListener("click", prevSlide);
+document.getElementById("slideshow-next")?.addEventListener("click", nextSlide);
+document.getElementById("slideshow-close")?.addEventListener("click", () => {
+  const overlay = document.getElementById("slideshow-overlay");
+  if (overlay) overlay.classList.add("hidden");
+  if (slideshowInterval) { clearInterval(slideshowInterval); slideshowInterval = null; }
+});
+document.getElementById("slideshow-play")?.addEventListener("click", () => {
+  if (slideshowInterval) {
+    clearInterval(slideshowInterval);
+    slideshowInterval = null;
+    document.getElementById("slideshow-play").textContent = "▶";
+  } else {
+    slideshowInterval = setInterval(() => nextSlide(), 5000);
+    document.getElementById("slideshow-play").textContent = "⏸";
+  }
+});
+
+// ── Hover tooltip ──────────────────────────────────────────────────
+const memeTooltip = document.createElement("div");
+memeTooltip.className = "meme-tooltip";
+memeTooltip.style.cssText = "position:fixed;display:none;z-index:9999;pointer-events:none;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.1);background:#000";
+document.body.appendChild(memeTooltip);
+
+function setupTooltip(card, previewUrl) {
+  card.addEventListener("mouseenter", (e) => {
+    const tipImg = document.createElement("img");
+    tipImg.src = previewUrl;
+    tipImg.style.cssText = "display:block;max-width:300px;max-height:300px";
+    memeTooltip.innerHTML = "";
+    memeTooltip.appendChild(tipImg);
+    memeTooltip.style.display = "block";
+    positionTooltip(e);
+  });
+  card.addEventListener("mousemove", positionTooltip);
+  card.addEventListener("mouseleave", () => { memeTooltip.style.display = "none"; });
+}
+function positionTooltip(e) {
+  const x = Math.min(e.clientX + 16, window.innerWidth - 320);
+  const y = Math.min(e.clientY + 16, window.innerHeight - 320);
+  memeTooltip.style.left = x + "px";
+  memeTooltip.style.top = y + "px";
+}
+
+// ── Dark mode toggle ───────────────────────────────────────────────
+function applyLauncherTheme(theme) {
+  document.documentElement.dataset.launcherTheme = theme || "classic";
+}
+
+// ── Thumbnail shape ────────────────────────────────────────────────
+function applyThumbnailShape(shape) {
+  document.documentElement.dataset.thumb = shape || "square";
+}
+
+// ─── Tooltip cleanup on grid re-render ────────────────────────────
+function hideTooltip() { memeTooltip.style.display = "none"; }
 document.getElementById("btn-download-all")?.addEventListener("click", async () => {
   if (!window.memedrop.requestLibrarySync) return toast("Fonction non disponible", "error");
   toast("📥 Demande de synchronisation envoyée…");
@@ -881,7 +1004,9 @@ async function openBlacklistModal() {
     preview.src = "file:///" + meme.path.replace(/\\/g, "/");
     preview.style.cssText = "width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0;background:var(--bg-card)";
     preview.loading = "lazy";
-    item.insertBefore(preview, name);
+
+    item.appendChild(preview);
+    item.appendChild(name);
 
     const restoreBtn = document.createElement("button");
     restoreBtn.className = "restore-btn";
@@ -906,7 +1031,6 @@ async function openBlacklistModal() {
       toast(`🗑️ "${meme.name}" retiré de la blacklist`);
     });
 
-    item.appendChild(name);
     item.appendChild(restoreBtn);
     item.appendChild(deleteBtn);
     listEl.appendChild(item);
@@ -2296,6 +2420,7 @@ function createGiphyItem(gif) {
     gif?.images?.fixed_height?.url || gif?.images?.original?.url || "";
   if (!gifUrl) return null; // Skip invalid GIFs
   img.src = gifUrl; // Load directly (CSP doesn't block img.src in Electron)
+  img.crossOrigin = "anonymous";
   // Also try fetchAsDataUrl for better reliability (runs async, won't override if already set)
   window.memedrop
     .fetchAsDataUrl(gifUrl)
@@ -2735,6 +2860,10 @@ function initTriagePanel() {
     triageState.query = e.target.value;
   });
 
+  document.getElementById("triage-date-select")?.addEventListener("change", (e) => {
+    triageState.dateFilter = e.target.value;
+  });
+
   document
     .getElementById("btn-apply-triage")
     ?.addEventListener("click", applyTriage);
@@ -2744,6 +2873,7 @@ function initTriagePanel() {
     triageState.favFilter = "all";
     triageState.sort = "name";
     triageState.query = "";
+    triageState.dateFilter = "all";
     const searchEl = document.getElementById("triage-search");
     if (searchEl) searchEl.value = "";
     document.querySelectorAll(".triage-btn").forEach((b) => {
@@ -2820,6 +2950,7 @@ async function setupFileWatcher() {
 
   try {
     unsubLibraryChanged = window.memedrop.onLibraryChanged(() => {
+      if (typeof previewCache !== "undefined" && previewCache) previewCache.clear();
       loadMemes();
       loadAudioLibrary();
       toast("📂 Bibliothèque mise à jour");
@@ -3050,6 +3181,9 @@ async function initSettings() {
   const settingSpotlightOnDrop = document.getElementById(
     "setting-spotlightOnDrop",
   );
+  const settingHardwareAccel = document.getElementById(
+    "setting-hardware-accel",
+  );
   const settingTheme = document.getElementById("setting-theme");
   const settingOverlayDisplayId = document.getElementById(
     "setting-overlayDisplayId",
@@ -3239,6 +3373,13 @@ async function initSettings() {
     settingSpotlightOnDrop.checked = !!settings.spotlightOnDrop;
     settingSpotlightOnDrop.addEventListener("change", (e) => {
       window.memedrop.updateSettings({ spotlightOnDrop: e.target.checked });
+    });
+  }
+
+  if (settingHardwareAccel) {
+    settingHardwareAccel.checked = !!settings.hardwareAcceleration;
+    settingHardwareAccel.addEventListener("change", (e) => {
+      window.memedrop.updateSettings({ hardwareAcceleration: e.target.checked });
     });
   }
 
@@ -3522,6 +3663,16 @@ async function init() {
 
   // Initialize triage panel
   initTriagePanel();
+
+  // Apply launcher theme (dark/light)
+  const allSettings = await window.memedrop.getSettings();
+  if (allSettings.launcherTheme) applyLauncherTheme(allSettings.launcherTheme);
+  if (allSettings.thumbnailShape) applyThumbnailShape(allSettings.thumbnailShape);
+  if (allSettings.customCSS) {
+    let cssEl = document.getElementById("custom-theme");
+    if (!cssEl) { cssEl = document.createElement("style"); cssEl.id = "custom-theme"; document.head.appendChild(cssEl); }
+    cssEl.textContent = allSettings.customCSS;
+  }
 
   // Load saved triage preferences
   await loadTriageState();
