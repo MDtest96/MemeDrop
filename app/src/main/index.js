@@ -867,6 +867,20 @@ if (!gotLock) {
         overlayWin.webContents.openDevTools({ mode: "detach" });
       }
     });
+    // Ctrl+M → toggle mute
+    globalShortcut.register("CommandOrControl+M", () => {
+      const isMuted = !!store.get("muteUntil");
+      if (isMuted) {
+        store.set("muteUntil", null);
+        console.log("[shortcut] unmuted");
+      } else {
+        store.set("muteUntil", -1); // Mute until reactivation
+        console.log("[shortcut] muted");
+      }
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send("mute:toggle", !isMuted);
+      }
+    });
 
     // Auto-update: check shortly after launch + every 30 min
     setTimeout(() => checkForUpdates(false), 4000);

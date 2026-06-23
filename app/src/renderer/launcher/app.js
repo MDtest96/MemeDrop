@@ -1610,6 +1610,8 @@ async function openDropPanel(meme) {
   panelCaption.value = "";
   panelRain.value = "";
   panelStatus.textContent = "";
+  // Restaurer la liste des templates de caption
+  renderCaptionTemplates();
   panelStatus.className = "panel-status";
 
   // Section B: Load tags for this meme
@@ -1902,6 +1904,39 @@ async function handleResend() {
     toast("Erreur lors du renvoi", "error");
   }
 }
+
+// ── Caption Templates ────────────────────────────────────────────
+let captionTemplates = [];
+try {
+  captionTemplates = JSON.parse(localStorage.getItem("memedrop_captions") || "[]");
+} catch {}
+
+function renderCaptionTemplates() {
+  const sel = document.getElementById("caption-templates");
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Messages sauvegardés...</option>';
+  for (const c of captionTemplates) {
+    const opt = document.createElement("option");
+    opt.value = c;
+    opt.textContent = c.length > 40 ? c.substring(0, 40) + "…" : c;
+    sel.appendChild(opt);
+  }
+}
+
+document.getElementById("btn-save-caption")?.addEventListener("click", () => {
+  const val = panelCaption?.value?.trim();
+  if (!val) return toast("Écris d'abord un message", "error");
+  if (captionTemplates.includes(val)) return toast("Message déjà sauvegardé", "error");
+  captionTemplates.push(val);
+  localStorage.setItem("memedrop_captions", JSON.stringify(captionTemplates));
+  renderCaptionTemplates();
+  toast("💾 Message sauvegardé");
+});
+
+document.getElementById("caption-templates")?.addEventListener("change", (e) => {
+  const val = e.target.value;
+  if (val && panelCaption) panelCaption.value = val;
+});
 
 async function triggerScreenshot() {
   try {
@@ -2760,6 +2795,14 @@ document.getElementById("btn-clear-collage")?.addEventListener("click", () => {
   document
     .querySelectorAll(".selected-collage")
     .forEach((el) => el.classList.remove("selected-collage"));
+});
+
+// ── Random Drop ────────────────────────────────────────────────
+document.getElementById("btn-random-drop")?.addEventListener("click", () => {
+  if (!allMemes || allMemes.length === 0) return toast("Aucun meme à drop", "error");
+  const randomMeme = allMemes[Math.floor(Math.random() * allMemes.length)];
+  openDropPanel(randomMeme);
+  toast(`🎲 Drop aléatoire : ${randomMeme.name}`);
 });
 
 document
