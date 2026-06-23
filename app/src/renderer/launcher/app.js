@@ -459,12 +459,9 @@ async function loadMemes() {
 }
 
 let currentRenderId = 0;
-const PAGE_SIZE = 50;
-let currentPage = 0;
 
 async function renderGrid() {
   const renderId = ++currentRenderId;
-  currentPage = 0;
 
   // Filter
   let filtered = allMemes;
@@ -530,20 +527,10 @@ async function renderGrid() {
     });
   }
 
-  // Pagination
-  const totalFiltered = filtered.length;
-  const pageCount = Math.ceil(totalFiltered / PAGE_SIZE);
-  const pageStart = currentPage * PAGE_SIZE;
-  filtered = filtered.slice(pageStart, pageStart + PAGE_SIZE);
-
   // Clear grid
   const cards = grid.querySelectorAll(".meme-card");
   cards.forEach((c) => c.remove());
   gridEmpty.classList.add("hidden");
-
-  // Remove old load-more button
-  const oldLoadMore = grid.querySelector(".load-more-bar");
-  if (oldLoadMore) oldLoadMore.remove();
 
   if (filtered.length === 0) {
     gridEmpty.classList.remove("hidden");
@@ -769,25 +756,7 @@ async function renderGrid() {
   }
 
   grid.appendChild(fragment);
-
-  // Pagination
-  if (pageCount > 1) {
-    const bar = document.createElement("div");
-    bar.style.cssText = "grid-column:1/-1;text-align:center;padding:12px;font-size:12px;color:var(--text-dim)";
-    if (currentPage < pageCount - 1) {
-      const btn = document.createElement("button");
-      btn.className = "primary";
-      btn.style.cssText = "padding:6px 24px;font-size:13px";
-      btn.textContent = "Afficher plus (" + (pageStart + PAGE_SIZE) + "/" + totalFiltered + ")";
-      btn.addEventListener("click", () => { currentPage++; renderGrid(); });
-      bar.appendChild(btn);
-    } else {
-      bar.textContent = totalFiltered + " memes - fin";
-    }
-    grid.appendChild(bar);
-  }
-
-  memeCount.textContent = totalFiltered + " meme" + (totalFiltered > 1 ? "s" : "");
+  memeCount.textContent = `${filtered.length} meme${filtered.length > 1 ? "s" : ""}`;
 }
 
 // ── Search (debounced 300ms) ──────────────────────────────────────────
@@ -1804,6 +1773,8 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
       }
       result = { ok: sentCount > 0, count: sentCount };
     } else {
+      const syncDuration = document.getElementById("panel-sync-audio-duration")?.checked;
+      const effectiveDuration = syncDuration && audioPath ? 60 : currentDuration;
       result = await window.memedrop.sendDrop({
         target,
         filePath: selectedMeme.path,
@@ -1812,7 +1783,7 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
         rain,
         kind: selectedMeme.kind,
         volume,
-        duration: currentDuration,
+        duration: effectiveDuration,
         showLocalPreview: idx === 0 ? localPreview : false,
       });
     }
