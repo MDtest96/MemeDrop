@@ -373,6 +373,13 @@ body {
     pointer-events: auto;
     border-top: 1px solid var(--border);
 }
+.meme-card.caption-below img,
+.meme-card.caption-below video {
+    flex: 1;
+    min-height: 40px;
+    object-fit: cover;
+    width: 100%;
+}
 
 /* ── Dropzone ───────────────────────────────────────────────────── */
 .dropzone {

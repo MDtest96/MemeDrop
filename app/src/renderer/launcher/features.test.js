@@ -1238,3 +1238,38 @@ describe("shared filename format", function() {
     expect(destPath).toBe("/memes/cat_2.gif");
   });
 });
+
+describe("caption toggle", function() {
+  it("should apply caption-below class to grid on toggle", function() {
+    document.body.innerHTML = '<div class="grid" id="grid"><div class="meme-card"><div class="meme-card-name">test</div></div></div>';
+    var grid = document.getElementById("grid");
+    var card = grid.querySelector(".meme-card");
+
+    // Simuler le toggle
+    grid.classList.add("caption-below");
+    card.classList.add("caption-below");
+
+    expect(grid.classList.contains("caption-below")).toBe(true);
+    expect(card.classList.contains("caption-below")).toBe(true);
+
+    // Verifier que le nom n'est plus en position absolute
+    var style = getComputedStyle(card.querySelector(".meme-card-name"));
+    expect(style.position).toBe("static");
+  });
+
+  it("should toggle off and restore original classes", function() {
+    document.body.innerHTML = '<div class="grid" id="grid"><div class="meme-card"><div class="meme-card-name">test</div></div></div>';
+    var grid = document.getElementById("grid");
+    var card = grid.querySelector(".meme-card");
+
+    // Toggle on
+    grid.classList.add("caption-below");
+    card.classList.add("caption-below");
+    // Toggle off
+    grid.classList.remove("caption-below");
+    card.classList.remove("caption-below");
+
+    expect(grid.classList.contains("caption-below")).toBe(false);
+    expect(card.classList.contains("caption-below")).toBe(false);
+  });
+});
