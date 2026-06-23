@@ -1420,6 +1420,30 @@ ipcMain.handle("tools:importConfig", async (_e, data) => {
   }
 });
 
+// ── Reset complet de l'app ───────────────────────────────────────────────
+ipcMain.handle("tools:resetApp", async () => {
+  try {
+    store.clear();
+    // Re-set les valeurs par défaut après le clear
+    const defaults = {
+      serverUrl: "wss://memedrop-bot-production.up.railway.app",
+      volume: 0.75,
+      musicVolume: 0.75,
+      duration: 4,
+      videoDuration: 30,
+      soundOnArrival: true,
+      autostart: false,
+      hiddenMemes: [],
+      hiddenMemeNames: [],
+      triageState: { typeFilters: [], tag: null, favFilter: "all", sort: "name", query: "" },
+    };
+    for (const [k, v] of Object.entries(defaults)) store.set(k, v);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 // ── Dialog: select folder ────────────────────────────────────────────────
 ipcMain.handle("dialog:selectFolder", async () => {
   const { dialog } = require("electron");

@@ -203,13 +203,7 @@ const unsubConn = window.memedrop.onConnection((state) => {
       pairingDisplay.textContent = state.code || "------";
     } else if (state.status === "linked") {
       pairingDisplay.textContent = `Lié à ${state.user?.username || "inconnu"}`;
-      // Sync complet de la bibliothèque une seule fois par session
-      if (window.memedrop.syncAllMemes && !window._hasSynced) {
-        window._hasSynced = true;
-        window.memedrop.syncAllMemes().then(r => {
-          if (r && r.ok) console.log("[sync] Bibliothèque partagée:", r.count, "memes");
-        }).catch(() => {});
-      }
+      // Sync manuel uniquement (bouton 📤 Sync) pour économiser les tokens
     } else {
       pairingDisplay.textContent = "------";
     }
@@ -2755,6 +2749,9 @@ async function setupFileWatcher() {
   }
 
   // Écouter les demandes de sync des autres utilisateurs
+  // Écouter les demandes de sync des autres utilisateurs (désactivé : manuel seulement)
+  // Décommente pour réactiver :
+  /*
   try {
     window.memedrop.onLibrarySyncRequested(() => {
       console.log("[sync] library sync requested by another user, sending memes...");
@@ -2765,6 +2762,7 @@ async function setupFileWatcher() {
   } catch (e) {
     console.warn("onLibrarySyncRequested not available", e);
   }
+  */
 }
 
 // ── Collage Mode ────────────────────────────────────────────────────────
@@ -3167,6 +3165,18 @@ async function initSettings() {
       };
       input.click();
     });
+
+  document.getElementById("btn-reset-app")?.addEventListener("click", async () => {
+    if (!confirm("Réinitialiser tous les réglages ? Les fichiers memes ne seront pas supprimés.")) return;
+    if (!confirm("Confirmation : toutes les données locales seront effacées.")) return;
+    const r = await window.memedrop.resetApp();
+    if (r && r.ok) {
+      toast("🗑️ App réinitialisée, recharge...");
+      setTimeout(() => window.location.reload(), 1000);
+    } else {
+      toast("Erreur: " + (r?.error || "inconnue"), "error");
+    }
+  });
 
   if (pairingCodeDisplay) {
     pairingCodeDisplay.textContent = settings.linkIdentity || "------";

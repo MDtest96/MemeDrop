@@ -96,6 +96,7 @@ contextBridge.exposeInMainWorld("memedrop", {
   getCachedUsers: () => ipcRenderer.invoke("users:getCached"),
   exportConfig: () => ipcRenderer.invoke("tools:exportConfig"),
   importConfig: (data) => ipcRenderer.invoke("tools:importConfig", data),
+  resetApp: () => ipcRenderer.invoke("tools:resetApp"),
   syncMeme: (data) => ipcRenderer.invoke("memes:sync", data),
   syncAllMemes: (force) => ipcRenderer.invoke("memes:syncAll", force),
   requestLibrarySync: () => ipcRenderer.invoke("library:requestSync"),
