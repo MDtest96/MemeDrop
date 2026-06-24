@@ -1,11 +1,12 @@
 {
   "name": "memedrop",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "MemeDrop Unified App",
   "author": "MDtest96",
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
+    "predev": "taskkill /F /IM electron.exe 2>nul || exit /b 0",
     "dev": "nodemon --watch src/main --watch src/preload --ext js --exec \"electron . --remote-debugging-port=9222\"",
     "build:win": "electron-builder --win",
     "release": "dotenv -- electron-builder --win -p always",

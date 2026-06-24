@@ -115,7 +115,8 @@ describe("triage icon tooltip", () => {
 
 describe("filter bar hover transitions", () => {
   beforeEach(() => {
-    document.body.innerHTML = '<div class="grid-filter-bar">\n' +
+    document.body.innerHTML =
+      '<div class="grid-filter-bar">\n' +
       '      <button class="triage-btn">Tous</button>\n' +
       '      <button class="triage-btn">🖼</button>\n' +
       '      <select class="triage-select"><option>Tri</option></select>\n' +
@@ -181,14 +182,16 @@ describe("multi-select type filters", () => {
       '        <button class="triage-btn" data-filter="gif">🎞</button>\n' +
       '        <button class="triage-btn" data-filter="video">🎬</button>\n' +
       '        <button class="triage-btn" data-filter="audio">🎵</button>\n' +
-      '      </div>\n' +
+      "      </div>\n" +
       '      <div class="grid" id="grid"></div>\n' +
       "    ";
   });
 
   function simulateToggle(btn) {
     if (btn.dataset.filter === "all") {
-      document.querySelectorAll(".triage-btn").forEach((b) => b.classList.remove("active"));
+      document
+        .querySelectorAll(".triage-btn")
+        .forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
     } else {
       const allBtn = document.querySelector('[data-filter="all"]');
@@ -234,7 +237,9 @@ describe("multi-select type filters", () => {
     const types = ["image", "gif"];
     const filtered = filterMemes(allMemes, types);
     expect(filtered).toHaveLength(4);
-    expect(filtered.every((m) => m.kind === "image" || m.kind === "gif")).toBe(true);
+    expect(filtered.every((m) => m.kind === "image" || m.kind === "gif")).toBe(
+      true,
+    );
   });
 
   it("should show all memes when Tous is selected", () => {
@@ -270,25 +275,30 @@ describe("multi-select type filters", () => {
     const types = getSelectedTypes();
     const filtered = filterMemes(allMemes, types);
     expect(filtered).toHaveLength(2);
-    expect(filtered.every((m) => m.kind === "video" || m.kind === "audio")).toBe(true);
+    expect(
+      filtered.every((m) => m.kind === "video" || m.kind === "audio"),
+    ).toBe(true);
   });
 });
 
 describe("paste URL in grid (Ctrl+V)", () => {
   function isMediaUrl(url) {
-    return /^https?:\/\//i.test(url) && (
-      /\.(mp4|webm|gif|jpg|jpeg|png|webp)(\?|$)/i.test(url) ||
-      /giphy\.com/i.test(url) ||
-      /tenor\.com/i.test(url) ||
-      /twitter\.com/i.test(url) ||
-      /x\.com/i.test(url) ||
-      /youtube\.com/i.test(url) ||
-      /youtu\.be/i.test(url)
+    return (
+      /^https?:\/\//i.test(url) &&
+      (/\.(mp4|webm|gif|jpg|jpeg|png|webp)(\?|$)/i.test(url) ||
+        /giphy\.com/i.test(url) ||
+        /tenor\.com/i.test(url) ||
+        /twitter\.com/i.test(url) ||
+        /x\.com/i.test(url) ||
+        /youtube\.com/i.test(url) ||
+        /youtu\.be/i.test(url))
     );
   }
 
   it("should detect a media URL", () => {
-    expect(isMediaUrl("https://media.giphy.com/media/abc/giphy.gif")).toBe(true);
+    expect(isMediaUrl("https://media.giphy.com/media/abc/giphy.gif")).toBe(
+      true,
+    );
     expect(isMediaUrl("https://tenor.com/view/cat-funny-gif-12345")).toBe(true);
     expect(isMediaUrl("https://twitter.com/user/status/123456789")).toBe(true);
     expect(isMediaUrl("https://x.com/user/status/123456789")).toBe(true);
@@ -301,7 +311,11 @@ describe("paste URL in grid (Ctrl+V)", () => {
 
   it("should call downloadUrl when a media URL is pasted", async () => {
     const url = "https://media.giphy.com/media/test/giphy.gif";
-    const fakeResult = { name: "giphy_test", path: "/memes/test.gif", kind: "gif" };
+    const fakeResult = {
+      name: "giphy_test",
+      path: "/memes/test.gif",
+      kind: "gif",
+    };
     window.memedrop = { downloadUrl: vi.fn().mockResolvedValue(fakeResult) };
 
     const downloaded = await window.memedrop.downloadUrl(url);
@@ -311,8 +325,9 @@ describe("paste URL in grid (Ctrl+V)", () => {
   it("should handle a failed URL download gracefully", async () => {
     const mockDownload = vi.fn().mockRejectedValue(new Error("Network error"));
     window.memedrop = { downloadUrl: mockDownload };
-    await expect(window.memedrop.downloadUrl("https://example.com/invalid.gif"))
-      .rejects.toThrow("Network error");
+    await expect(
+      window.memedrop.downloadUrl("https://example.com/invalid.gif"),
+    ).rejects.toThrow("Network error");
   });
 });
 
@@ -323,7 +338,8 @@ describe("right-click context menu", () => {
     const menu = document.createElement("div");
     menu.id = "meme-context-menu";
     menu.className = "context-menu";
-    menu.style.cssText = "position:fixed;left:" + x + "px;top:" + y + "px;z-index:9999";
+    menu.style.cssText =
+      "position:fixed;left:" + x + "px;top:" + y + "px;z-index:9999";
     const items = [];
     if (meme.kind === "audio") {
       items.push({ label: "🔊 Play Audio", action: "play-audio" });
@@ -334,7 +350,7 @@ describe("right-click context menu", () => {
     items.push({ label: "⭐ Add to Favorites", action: "toggle-fav" });
     items.push({ label: "🗑 Hide", action: "hide" });
     items.push({ label: "📤 Send", action: "send" });
-    items.forEach(function(item) {
+    items.forEach(function (item) {
       var btn = document.createElement("button");
       btn.className = "context-menu-item";
       btn.dataset.action = item.action;
@@ -350,7 +366,7 @@ describe("right-click context menu", () => {
     if (menu) menu.remove();
   }
 
-  beforeEach(function() {
+  beforeEach(function () {
     document.body.innerHTML = '<div class="grid"></div>';
     var card = document.createElement("div");
     card.className = "meme-card";
@@ -360,7 +376,7 @@ describe("right-click context menu", () => {
     document.querySelector(".grid").appendChild(card);
   });
 
-  it("should create a context menu on right-click", function() {
+  it("should create a context menu on right-click", function () {
     var meme = { name: "test", path: "/memes/test.gif", kind: "gif" };
     var menu = createContextMenu(meme, 100, 200);
     expect(menu).toBeTruthy();
@@ -370,7 +386,7 @@ describe("right-click context menu", () => {
     expect(menu.style.top).toBe("200px");
   });
 
-  it("should include Play Audio option for audio memes", function() {
+  it("should include Play Audio option for audio memes", function () {
     var meme = { name: "song", path: "/memes/song.mp3", kind: "audio" };
     var menu = createContextMenu(meme, 0, 0);
     var playBtn = menu.querySelector('[data-action="play-audio"]');
@@ -378,35 +394,35 @@ describe("right-click context menu", () => {
     expect(playBtn.textContent).toContain("Play Audio");
   });
 
-  it("should NOT include Play Audio for non-audio memes", function() {
+  it("should NOT include Play Audio for non-audio memes", function () {
     var meme = { name: "img", path: "/memes/img.png", kind: "image" };
     var menu = createContextMenu(meme, 0, 0);
     var playBtn = menu.querySelector('[data-action="play-audio"]');
     expect(playBtn).toBeFalsy();
   });
 
-  it("should include Rename option for any meme", function() {
+  it("should include Rename option for any meme", function () {
     var meme = { name: "test", path: "/memes/test.gif", kind: "gif" };
     var menu = createContextMenu(meme, 0, 0);
     var renameBtn = menu.querySelector('[data-action="rename"]');
     expect(renameBtn).toBeTruthy();
   });
 
-  it("should include Hide option for any meme", function() {
+  it("should include Hide option for any meme", function () {
     var meme = { name: "test", path: "/memes/test.gif", kind: "gif" };
     var menu = createContextMenu(meme, 0, 0);
     var hideBtn = menu.querySelector('[data-action="hide"]');
     expect(hideBtn).toBeTruthy();
   });
 
-  it("should include Send option for any meme", function() {
+  it("should include Send option for any meme", function () {
     var meme = { name: "test", path: "/memes/test.gif", kind: "gif" };
     var menu = createContextMenu(meme, 0, 0);
     var sendBtn = menu.querySelector('[data-action="send"]');
     expect(sendBtn).toBeTruthy();
   });
 
-  it("should close context menu when clicking outside", function() {
+  it("should close context menu when clicking outside", function () {
     var meme = { name: "test", path: "/memes/test.gif", kind: "gif" };
     createContextMenu(meme, 0, 0);
     expect(document.getElementById("meme-context-menu")).toBeTruthy();
@@ -414,7 +430,7 @@ describe("right-click context menu", () => {
     expect(document.getElementById("meme-context-menu")).toBeFalsy();
   });
 
-  it("should remove old menu before creating a new one", function() {
+  it("should remove old menu before creating a new one", function () {
     var meme = { name: "test", path: "/memes/test.gif", kind: "gif" };
     createContextMenu(meme, 0, 0);
     createContextMenu(meme, 50, 50);
@@ -422,7 +438,7 @@ describe("right-click context menu", () => {
     expect(menus.length).toBe(1);
   });
 
-  it("should trigger rename action from context menu", function() {
+  it("should trigger rename action from context menu", function () {
     var meme = { name: "test", path: "/memes/test.gif", kind: "gif" };
     var menu = createContextMenu(meme, 0, 0);
     var renameBtn = menu.querySelector('[data-action="rename"]');
@@ -433,7 +449,7 @@ describe("right-click context menu", () => {
     expect(handler).toHaveBeenCalled();
   });
 
-  it("should trigger play-audio action from context menu", function() {
+  it("should trigger play-audio action from context menu", function () {
     var meme = { name: "song", path: "/memes/song.mp3", kind: "audio" };
     var menu = createContextMenu(meme, 0, 0);
     var playBtn = menu.querySelector('[data-action="play-audio"]');
@@ -445,8 +461,8 @@ describe("right-click context menu", () => {
   });
 });
 
-describe("audio in drop flow", function() {
-  it("should include audioPath when sending a meme with sound", function() {
+describe("audio in drop flow", function () {
+  it("should include audioPath when sending a meme with sound", function () {
     var selectedMeme = { name: "cat.gif", path: "/memes/cat.gif", kind: "gif" };
     var audioPath = "/memes/song.mp3";
     var payload = {
@@ -460,7 +476,7 @@ describe("audio in drop flow", function() {
     expect(payload.filePath).toBe("/memes/cat.gif");
   });
 
-  it("formatQuickDropPayload should produce music field from audioPath", function() {
+  it("formatQuickDropPayload should produce music field from audioPath", function () {
     var payload = {
       filePath: "/memes/cat.gif",
       audioPath: "/memes/song.mp3",
@@ -470,9 +486,19 @@ describe("audio in drop flow", function() {
       type: "quick_drop",
       target: payload.target,
       caption: payload.caption,
-      media: { name: "cat.gif", kind: "gif", mime: "image/gif", data: "base64data" },
+      media: {
+        name: "cat.gif",
+        kind: "gif",
+        mime: "image/gif",
+        data: "base64data",
+      },
       music: payload.audioPath
-        ? { name: "song.mp3", kind: "audio", mime: "audio/mpeg", data: "base64data" }
+        ? {
+            name: "song.mp3",
+            kind: "audio",
+            mime: "audio/mpeg",
+            data: "base64data",
+          }
         : null,
     };
     expect(formatted.music).toBeTruthy();
@@ -480,7 +506,7 @@ describe("audio in drop flow", function() {
     expect(formatted.music.data).toBeTruthy();
   });
 
-  it("bot should relay music field to recipients", function() {
+  it("bot should relay music field to recipients", function () {
     var msg = {
       music: {
         data: "base64data",
@@ -492,7 +518,11 @@ describe("audio in drop flow", function() {
       type: "drop",
       music: msg.music
         ? {
-            url: "data:" + (msg.music.mime || "audio/mpeg") + ";base64," + msg.music.data,
+            url:
+              "data:" +
+              (msg.music.mime || "audio/mpeg") +
+              ";base64," +
+              msg.music.data,
             name: msg.music.name || "audio.mp3",
           }
         : null,
@@ -501,10 +531,14 @@ describe("audio in drop flow", function() {
     expect(relayPayload.music.url).toContain("data:audio/mpeg;base64");
   });
 
-  it("overlay should play music when music.url is present and media is image/gif", function() {
+  it("overlay should play music when music.url is present and media is image/gif", function () {
     var msg = {
       type: "drop",
-      media: { url: "data:image/gif;base64,abc", kind: "gif", mime: "image/gif" },
+      media: {
+        url: "data:image/gif;base64,abc",
+        kind: "gif",
+        mime: "image/gif",
+      },
       music: { url: "data:audio/mpeg;base64,xyz", name: "song.mp3" },
       from: { id: "user1", username: "sender" },
       ts: Date.now(),
@@ -513,20 +547,31 @@ describe("audio in drop flow", function() {
     var media = msg.media;
     expect(music).toBeTruthy();
     expect(music.url).toContain("data:audio/mpeg");
-    var shouldPlay = music && music.url && (media.kind === "image" || media.kind === "gif");
+    var shouldPlay =
+      music && music.url && (media.kind === "image" || media.kind === "gif");
     expect(shouldPlay).toBe(true);
   });
 
-  it("should use musicVolume for overlay audio playback", function() {
+  it("should use musicVolume for overlay audio playback", function () {
     var settings = { musicVolume: 0.5, volume: 0.75 };
-    var musicVol = settings.musicVolume !== undefined ? settings.musicVolume : (settings.volume !== undefined ? settings.volume : 0.75);
+    var musicVol =
+      settings.musicVolume !== undefined
+        ? settings.musicVolume
+        : settings.volume !== undefined
+          ? settings.volume
+          : 0.75;
     expect(musicVol).toBe(0.5);
     var settings2 = { volume: 0.8 };
-    var musicVol2 = settings2.musicVolume !== undefined ? settings2.musicVolume : (settings2.volume !== undefined ? settings2.volume : 0.75);
+    var musicVol2 =
+      settings2.musicVolume !== undefined
+        ? settings2.musicVolume
+        : settings2.volume !== undefined
+          ? settings2.volume
+          : 0.75;
     expect(musicVol2).toBe(0.8);
   });
 
-  it("bot should build music URL from base64 data", function() {
+  it("bot should build music URL from base64 data", function () {
     var msgMusic = {
       data: "dGVzdC1hdWRpbw==",
       mime: "audio/mpeg",
@@ -541,7 +586,7 @@ describe("audio in drop flow", function() {
     expect(msgMusic.name).toBe("song.mp3");
   });
 
-  it("main process should relay music from payload to WS", function() {
+  it("main process should relay music from payload to WS", function () {
     var payload = {
       filePath: "/memes/cat.gif",
       audioPath: "/memes/song.mp3",
@@ -551,9 +596,19 @@ describe("audio in drop flow", function() {
     var formattedPayload = {
       type: "quick_drop",
       target: payload.target,
-      media: { name: "cat.gif", kind: "gif", mime: "image/gif", data: "base64img" },
+      media: {
+        name: "cat.gif",
+        kind: "gif",
+        mime: "image/gif",
+        data: "base64img",
+      },
       music: payload.audioPath
-        ? { name: "song.mp3", kind: "audio", mime: "audio/mpeg", data: "base64audio" }
+        ? {
+            name: "song.mp3",
+            kind: "audio",
+            mime: "audio/mpeg",
+            data: "base64audio",
+          }
         : null,
     };
     expect(formattedPayload.music).toBeTruthy();
@@ -564,22 +619,28 @@ describe("audio in drop flow", function() {
   });
 });
 
-describe("video + background music in overlay", function() {
-  it("should play music for video when music is selected", function() {
+describe("video + background music in overlay", function () {
+  it("should play music for video when music is selected", function () {
     // Comportement ACTUEL (bug): overlay ne joue music que pour image/gif
     var music = { url: "data:audio/mpeg;base64,xyz", name: "song.mp3" };
     var media = { kind: "video" };
 
     // Condition ACTUELLE (BUG) : ne passe pas pour video
-    var currentCondition = music && music.url && (media.kind === "image" || media.kind === "gif");
+    var currentCondition =
+      music && music.url && (media.kind === "image" || media.kind === "gif");
     expect(currentCondition).toBe(false);
 
     // Condition FIX: inclut video aussi
-    var fixedCondition = music && music.url && (media.kind === "image" || media.kind === "gif" || media.kind === "video");
+    var fixedCondition =
+      music &&
+      music.url &&
+      (media.kind === "image" ||
+        media.kind === "gif" ||
+        media.kind === "video");
     expect(fixedCondition).toBe(true);
   });
 
-  it("should mute video when background music is provided", function() {
+  it("should mute video when background music is provided", function () {
     var music = { url: "data:audio/mpeg;base64,xyz" };
     var videoEl = { muted: false };
 
@@ -591,7 +652,7 @@ describe("video + background music in overlay", function() {
     expect(videoEl.muted).toBe(true);
   });
 
-  it("should NOT mute video when no background music", function() {
+  it("should NOT mute video when no background music", function () {
     var music = null;
     var videoEl = { muted: false };
 
@@ -603,7 +664,7 @@ describe("video + background music in overlay", function() {
     expect(videoEl.muted).toBe(false);
   });
 
-  it("should include audioPath in sendDropUrl for weblinks", function() {
+  it("should include audioPath in sendDropUrl for weblinks", function () {
     // Le flux actuel pour les weblinks (sendDropUrl) n'inclut PAS audioPath
     // Il faut que sendDropUrl inclue aussi audioPath
     var payload = {
@@ -621,9 +682,18 @@ describe("video + background music in overlay", function() {
       type: "quick_drop",
       target: payload.target,
       caption: payload.caption,
-      media: { url: "https://video.twimg.com/123.mp4", kind: "video", mime: "video/mp4" },
+      media: {
+        url: "https://video.twimg.com/123.mp4",
+        kind: "video",
+        mime: "video/mp4",
+      },
       music: payload.audioPath
-        ? { name: "song.mp3", kind: "audio", mime: "audio/mpeg", data: "base64audio" }
+        ? {
+            name: "song.mp3",
+            kind: "audio",
+            mime: "audio/mpeg",
+            data: "base64audio",
+          }
         : null,
     };
 
@@ -631,7 +701,7 @@ describe("video + background music in overlay", function() {
     expect(wsMsg.music.name).toBe("song.mp3");
   });
 
-  it("should NOT include music when no audioPath in weblink", function() {
+  it("should NOT include music when no audioPath in weblink", function () {
     var payload = {
       target: "@friend",
       url: "https://x.com/user/status/123/video/1",
@@ -642,7 +712,11 @@ describe("video + background music in overlay", function() {
     var wsMsg = {
       type: "quick_drop",
       target: payload.target,
-      media: { url: "https://video.twimg.com/123.mp4", kind: "video", mime: "video/mp4" },
+      media: {
+        url: "https://video.twimg.com/123.mp4",
+        kind: "video",
+        mime: "video/mp4",
+      },
       music: payload.audioPath
         ? { name: "song.mp3", data: "base64audio" }
         : null,
@@ -652,28 +726,36 @@ describe("video + background music in overlay", function() {
   });
 });
 
-describe("Twitter/X URL resolution before download", function() {
-  beforeEach(function() {
+describe("Twitter/X URL resolution before download", function () {
+  beforeEach(function () {
     window.memedrop = {
       resolveUrl: vi.fn(),
       downloadUrl: vi.fn(),
     };
   });
 
-  it("should detect Twitter/X URLs", function() {
-    expect(/twitter\.com|x\.com/i.test("https://x.com/user/status/123/video/1")).toBe(true);
-    expect(/twitter\.com|x\.com/i.test("https://twitter.com/user/status/123")).toBe(true);
+  it("should detect Twitter/X URLs", function () {
+    expect(
+      /twitter\.com|x\.com/i.test("https://x.com/user/status/123/video/1"),
+    ).toBe(true);
+    expect(
+      /twitter\.com|x\.com/i.test("https://twitter.com/user/status/123"),
+    ).toBe(true);
     expect(/twitter\.com|x\.com/i.test("https://giphy.com/test")).toBe(false);
   });
 
-  it("should resolve before downloading a Twitter URL", async function() {
+  it("should resolve before downloading a Twitter URL", async function () {
     var twitterUrl = "https://x.com/user/status/123/video/1";
     var resolvedMedia = {
       url: "https://video.twimg.com/ext_tw_video/123.mp4",
       kind: "video",
       mime: "video/mp4",
     };
-    var fakeDownload = { name: "twitter_video", path: "/memes/vid.mp4", kind: "video" };
+    var fakeDownload = {
+      name: "twitter_video",
+      path: "/memes/vid.mp4",
+      kind: "video",
+    };
     window.memedrop.resolveUrl.mockResolvedValue(resolvedMedia);
     window.memedrop.downloadUrl.mockResolvedValue(fakeDownload);
     var resolved = await window.memedrop.resolveUrl(twitterUrl);
@@ -686,10 +768,19 @@ describe("Twitter/X URL resolution before download", function() {
     expect(window.memedrop.downloadUrl).not.toHaveBeenCalledWith(twitterUrl);
   });
 
-  it("should fallback to original URL if resolution fails", async function() {
+  it("should fallback to original URL if resolution fails", async function () {
     var url = "https://x.com/user/status/123/video/1";
-    var unresolved = { url: url, kind: "image", mime: "image/jpeg", unresolved: true };
-    var fakeDownload = { name: "fallback", path: "/memes/fallback.gif", kind: "image" };
+    var unresolved = {
+      url: url,
+      kind: "image",
+      mime: "image/jpeg",
+      unresolved: true,
+    };
+    var fakeDownload = {
+      name: "fallback",
+      path: "/memes/fallback.gif",
+      kind: "image",
+    };
     window.memedrop.resolveUrl.mockResolvedValue(unresolved);
     window.memedrop.downloadUrl.mockResolvedValue(fakeDownload);
     var resolved = await window.memedrop.resolveUrl(url);
@@ -698,36 +789,42 @@ describe("Twitter/X URL resolution before download", function() {
     expect(downloaded).toEqual(fakeDownload);
   });
 
-  it("should detect Twitter video in paste handler URL", function() {
+  it("should detect Twitter video in paste handler URL", function () {
     var pastedUrl = "https://x.com/siyoohse/status/2065202801685246391/video/1";
     expect(pastedUrl).toMatch(/x\.com/i);
     expect(pastedUrl).toMatch(/status\/\d+/);
   });
 });
 
-describe("target management", function() {
-  beforeEach(function() {
+describe("target management", function () {
+  beforeEach(function () {
     localStorage.clear();
-    document.body.innerHTML = '';
+    document.body.innerHTML = "";
     window.customTargets = new Set();
   });
 
   function addCustomTarget(val) {
     window.customTargets.add(val);
-    localStorage.setItem("memedrop_custom_targets", JSON.stringify([...window.customTargets]));
+    localStorage.setItem(
+      "memedrop_custom_targets",
+      JSON.stringify([...window.customTargets]),
+    );
   }
 
   function removeCustomTarget(val) {
     window.customTargets.delete(val);
-    localStorage.setItem("memedrop_custom_targets", JSON.stringify([...window.customTargets]));
+    localStorage.setItem(
+      "memedrop_custom_targets",
+      JSON.stringify([...window.customTargets]),
+    );
   }
 
-  it("should add a custom target", function() {
+  it("should add a custom target", function () {
     addCustomTarget("@friend");
     expect(window.customTargets.has("@friend")).toBe(true);
   });
 
-  it("should remove a custom target", function() {
+  it("should remove a custom target", function () {
     addCustomTarget("@friend");
     addCustomTarget("@pote");
     expect(window.customTargets.size).toBe(2);
@@ -738,21 +835,21 @@ describe("target management", function() {
     expect(window.customTargets.size).toBe(1);
   });
 
-  it("should persist custom targets in localStorage", function() {
+  it("should persist custom targets in localStorage", function () {
     addCustomTarget("@friend");
     // Simuler rechargement
     var saved = JSON.parse(localStorage.getItem("memedrop_custom_targets"));
     expect(saved).toEqual(["@friend"]);
   });
 
-  it("should remove from localStorage after deletion", function() {
+  it("should remove from localStorage after deletion", function () {
     addCustomTarget("@friend");
     removeCustomTarget("@friend");
     var saved = JSON.parse(localStorage.getItem("memedrop_custom_targets"));
     expect(saved).toEqual([]);
   });
 
-  it("should not be able to remove Discord users (only custom targets)", function() {
+  it("should not be able to remove Discord users (only custom targets)", function () {
     addCustomTarget("@friend");
     // Les utilisateurs Discord ne sont PAS dans customTargets
     var discordUser = "@fatima6848";
@@ -765,8 +862,8 @@ describe("target management", function() {
   });
 });
 
-describe("social meme sync", function() {
-  beforeEach(function() {
+describe("social meme sync", function () {
+  beforeEach(function () {
     window.memedrop = {
       downloadUrl: vi.fn(),
       getPreview: vi.fn(),
@@ -774,9 +871,12 @@ describe("social meme sync", function() {
     };
   });
 
-  it("should call syncMeme after adding a meme", function() {
+  it("should call syncMeme after adding a meme", function () {
     var syncCalled = false;
-    window.memedrop.syncMeme = function() { syncCalled = true; return Promise.resolve({ ok: true }); };
+    window.memedrop.syncMeme = function () {
+      syncCalled = true;
+      return Promise.resolve({ ok: true });
+    };
 
     // Simuler l'ajout d'un meme
     var result = { name: "test.gif", path: "/memes/test.gif", kind: "gif" };
@@ -785,10 +885,10 @@ describe("social meme sync", function() {
     expect(syncCalled).toBe(true);
   });
 
-  it("syncMeme should send type: meme_sync via IPC", async function() {
+  it("syncMeme should send type: meme_sync via IPC", async function () {
     var captured = null;
     // Simule l'IPC memes:sync
-    window.memedrop.syncMeme = async function(data) {
+    window.memedrop.syncMeme = async function (data) {
       captured = data;
       return { ok: true };
     };
@@ -799,7 +899,7 @@ describe("social meme sync", function() {
     expect(captured).toEqual(result);
   });
 
-  it("should load memes when receiving a synced meme", function() {
+  it("should load memes when receiving a synced meme", function () {
     var loadMemesCalled = false;
     // Simule l'écouteur onMemeSynced qui appelle loadMemes()
     function onMemeSynced() {
@@ -811,7 +911,7 @@ describe("social meme sync", function() {
     expect(loadMemesCalled).toBe(true);
   });
 
-  it("should handle meme_sync message from bot", function() {
+  it("should handle meme_sync message from bot", function () {
     // Simule ce que le bot envoie
     var msg = {
       type: "meme_sync",
@@ -827,19 +927,21 @@ describe("social meme sync", function() {
   });
 });
 
-describe("full library sync", function() {
+describe("full library sync", function () {
   function shouldSkipHidden(filename, hiddenNames) {
     // Extrait le nom original du fichier (sans préfixe shared_ et timestamp)
     var originalName = filename.replace(/^shared_\d+_/, "");
     return hiddenNames.has(originalName);
   }
 
-  it("should extract original name from shared_ filename", function() {
-    expect("shared_1234567890_cat.gif".replace(/^shared_\d+_/, "")).toBe("cat.gif");
+  it("should extract original name from shared_ filename", function () {
+    expect("shared_1234567890_cat.gif".replace(/^shared_\d+_/, "")).toBe(
+      "cat.gif",
+    );
     expect("cat.gif".replace(/^shared_\d+_/, "")).toBe("cat.gif");
   });
 
-  it("should NOT skip sync if meme was previously hidden (filter in list instead)", function() {
+  it("should NOT skip sync if meme was previously hidden (filter in list instead)", function () {
     // Le meme_sync ne bloque PLUS les memes par nom, car les shared_*
     // ont un chemin différent et ne seront pas filtrés par memes:list
     var hiddenNames = new Set(["cat.gif", "dog.png"]);
@@ -855,7 +957,7 @@ describe("full library sync", function() {
     expect(shouldSkipSync("new_image.png", hiddenNames)).toBe(false);
   });
 
-  it("should collect all memes for syncAll", function() {
+  it("should collect all memes for syncAll", function () {
     var allMemes = [
       { name: "cat", path: "/memes/cat.gif", kind: "gif" },
       { name: "dog", path: "/memes/dog.png", kind: "image" },
@@ -864,7 +966,7 @@ describe("full library sync", function() {
     expect(allMemes[0].name).toBe("cat");
   });
 
-  it("syncAll should call syncMeme for each meme", async function() {
+  it("syncAll should call syncMeme for each meme", async function () {
     var synced = [];
     var allMemes = [
       { name: "cat.gif", path: "/memes/cat.gif", kind: "gif" },
@@ -878,7 +980,7 @@ describe("full library sync", function() {
     expect(synced.length).toBe(2);
   });
 
-  it("should record hidden file names when hiding a meme", function() {
+  it("should record hidden file names when hiding a meme", function () {
     var hiddenNames = new Set();
     var memePath = "/memes/cat.gif";
     var fileName = memePath.split("/").pop(); // "cat.gif"
@@ -887,52 +989,70 @@ describe("full library sync", function() {
     expect(hiddenNames.has("cat.gif")).toBe(true);
   });
 
-  it("hiddenNames should persist alongside hiddenMemes", function() {
+  it("hiddenNames should persist alongside hiddenMemes", function () {
     var hiddenMemes = ["/memes/cat.gif", "/memes/dog.png"];
-    var hiddenNames = hiddenMemes.map(function(p) { return p.split("/").pop(); });
+    var hiddenNames = hiddenMemes.map(function (p) {
+      return p.split("/").pop();
+    });
 
     expect(hiddenNames).toEqual(["cat.gif", "dog.png"]);
   });
 
-  it("should add 'import\u00e9' tag to synced memes", function() {
+  it("should add 'import\u00e9' tag to synced memes", function () {
     var tags = {};
     var destPath = "/memes/shared_123_cat.gif";
 
     // Simule l'ajout du tag dans le handler meme_sync
     if (!tags[destPath]) tags[destPath] = [];
-    if (!tags[destPath].includes("import\u00e9")) tags[destPath].push("import\u00e9");
+    if (!tags[destPath].includes("import\u00e9"))
+      tags[destPath].push("import\u00e9");
 
     expect(tags[destPath]).toContain("import\u00e9");
   });
 
-  it("should filter memes by 'import\u00e9' tag in triage", function() {
+  it("should filter memes by 'import\u00e9' tag in triage", function () {
     var allMemes = [
-      { name: "cat", path: "/memes/shared_1_cat.gif", kind: "gif", tags: ["import\u00e9"] },
+      {
+        name: "cat",
+        path: "/memes/shared_1_cat.gif",
+        kind: "gif",
+        tags: ["import\u00e9"],
+      },
       { name: "dog", path: "/memes/dog.png", kind: "image", tags: [] },
-      { name: "bird", path: "/memes/shared_2_bird.gif", kind: "gif", tags: ["import\u00e9"] },
+      {
+        name: "bird",
+        path: "/memes/shared_2_bird.gif",
+        kind: "gif",
+        tags: ["import\u00e9"],
+      },
     ];
 
-    var imported = allMemes.filter(function(m) { return m.tags && m.tags.includes("import\u00e9"); });
+    var imported = allMemes.filter(function (m) {
+      return m.tags && m.tags.includes("import\u00e9");
+    });
     expect(imported.length).toBe(2);
     expect(imported[0].name).toBe("cat");
     expect(imported[1].name).toBe("bird");
 
-    var local = allMemes.filter(function(m) { return !m.tags || !m.tags.includes("import\u00e9"); });
+    var local = allMemes.filter(function (m) {
+      return !m.tags || !m.tags.includes("import\u00e9");
+    });
     expect(local.length).toBe(1);
     expect(local[0].name).toBe("dog");
   });
 
-  it("should keep existing tags when adding 'import\u00e9'", function() {
+  it("should keep existing tags when adding 'import\u00e9'", function () {
     var tags = {};
     var destPath = "/memes/shared_123_cat.gif";
     tags[destPath] = ["funny"];
 
-    if (!tags[destPath].includes("import\u00e9")) tags[destPath].push("import\u00e9");
+    if (!tags[destPath].includes("import\u00e9"))
+      tags[destPath].push("import\u00e9");
 
     expect(tags[destPath]).toEqual(["funny", "import\u00e9"]);
   });
 
-  it("should skip duplicate synced files (same original name)", function() {
+  it("should skip duplicate synced files (same original name)", function () {
     var savedFiles = new Set();
 
     function trySave(originalName) {
@@ -955,7 +1075,7 @@ describe("full library sync", function() {
     expect(savedFiles.size).toBe(2);
   });
 
-  it("should not trigger syncAllMemes multiple times", function() {
+  it("should not trigger syncAllMemes multiple times", function () {
     var syncCount = 0;
     var hasSynced = false;
 
@@ -973,7 +1093,7 @@ describe("full library sync", function() {
     expect(syncCount).toBe(1);
   });
 
-  it("syncAllMemes should track already-sent files", function() {
+  it("syncAllMemes should track already-sent files", function () {
     var sentFiles = new Set();
     var memes = ["cat.gif", "cat.gif", "dog.png"];
     var sent = [];
@@ -989,7 +1109,7 @@ describe("full library sync", function() {
     expect(sent.length).toBe(2);
   });
 
-  it("should skip file if already saved with same original name (on receive)", function() {
+  it("should skip file if already saved with same original name (on receive)", function () {
     var memeFolder = "/memes";
     var existingFiles = ["shared_111_cat.gif", "dog.png"];
 
@@ -1012,14 +1132,14 @@ describe("full library sync", function() {
     expect(shouldSkip("shared_222_bird.mp4")).toBe(false);
   });
 
-  it("cleanupDuplicateSharedMemes should remove older duplicates", function() {
+  it("cleanupDuplicateSharedMemes should remove older duplicates", function () {
     // Simule le dossier memes avec des doublons
     var files = [
-      "shared_100_cat.gif",  // plus vieux
-      "shared_200_cat.gif",  // plus récent → garder
-      "shared_300_dog.png",  // seul → garder
-      "shared_400_dog.png",  // doublon → supprimer
-      "local_meme.jpg",      // pas shared_ → ignorer
+      "shared_100_cat.gif", // plus vieux
+      "shared_200_cat.gif", // plus récent → garder
+      "shared_300_dog.png", // seul → garder
+      "shared_400_dog.png", // doublon → supprimer
+      "local_meme.jpg", // pas shared_ → ignorer
     ];
 
     var toRemove = [];
@@ -1037,7 +1157,9 @@ describe("full library sync", function() {
     for (var name in byName) {
       var entries = byName[name];
       if (entries.length <= 1) continue;
-      entries.sort(function(a, b) { return b.ts - a.ts; });
+      entries.sort(function (a, b) {
+        return b.ts - a.ts;
+      });
       for (var i = 1; i < entries.length; i++) {
         toRemove.push(entries[i].file);
       }
@@ -1045,22 +1167,31 @@ describe("full library sync", function() {
 
     expect(toRemove).toEqual(["shared_100_cat.gif", "shared_300_dog.png"]);
     // Vérifie que les bons fichiers sont gardés
-    var kept = files.filter(function(f) { return !toRemove.includes(f); });
+    var kept = files.filter(function (f) {
+      return !toRemove.includes(f);
+    });
     expect(kept).toContain("shared_200_cat.gif");
     expect(kept).toContain("shared_400_dog.png");
     expect(kept).toContain("local_meme.jpg");
     expect(kept.length).toBe(3);
   });
 
-  it("syncAllMemes should not send shared_ files", function() {
-    var files = ["cat.gif", "shared_123_cat.gif", "dog.png", "shared_456_dog.png"];
-    var toSync = files.filter(function(f) { return !f.startsWith("shared_"); });
+  it("syncAllMemes should not send shared_ files", function () {
+    var files = [
+      "cat.gif",
+      "shared_123_cat.gif",
+      "dog.png",
+      "shared_456_dog.png",
+    ];
+    var toSync = files.filter(function (f) {
+      return !f.startsWith("shared_");
+    });
 
     expect(toSync).toEqual(["cat.gif", "dog.png"]);
     expect(toSync.length).toBe(2);
   });
 
-  it("should ignore meme_sync messages from self", function() {
+  it("should ignore meme_sync messages from self", function () {
     var sentOwnerId = "user1";
     var myUserId = "user1";
 
@@ -1073,7 +1204,7 @@ describe("full library sync", function() {
     expect(shouldIgnore("user2", myUserId)).toBe(false);
   });
 
-  it("syncAllMemes should only run once per session", function() {
+  it("syncAllMemes should only run once per session", function () {
     var runCount = 0;
     var hasRun = false;
 
@@ -1098,8 +1229,8 @@ describe("full library sync", function() {
   });
 });
 
-describe("hidden memes management (blacklist)", function() {
-  beforeEach(function() {
+describe("hidden memes management (blacklist)", function () {
+  beforeEach(function () {
     localStorage.clear();
     window.hiddenMemeNames = new Set();
     window.hiddenMemes = [];
@@ -1112,7 +1243,9 @@ describe("hidden memes management (blacklist)", function() {
   }
 
   function restoreMeme(path) {
-    window.hiddenMemes = window.hiddenMemes.filter(function(p) { return p !== path; });
+    window.hiddenMemes = window.hiddenMemes.filter(function (p) {
+      return p !== path;
+    });
     var name = path.split("/").pop();
     window.hiddenMemeNames.delete(name);
   }
@@ -1122,21 +1255,23 @@ describe("hidden memes management (blacklist)", function() {
     window.hiddenMemeNames.clear();
   }
 
-  it("should list all hidden memes with names", function() {
+  it("should list all hidden memes with names", function () {
     hideMeme("/memes/cat.gif");
     hideMeme("/memes/dog.png");
 
-    var list = window.hiddenMemes.map(function(p) { return {
-      path: p,
-      name: p.split("/").pop()
-    };});
+    var list = window.hiddenMemes.map(function (p) {
+      return {
+        path: p,
+        name: p.split("/").pop(),
+      };
+    });
 
     expect(list.length).toBe(2);
     expect(list[0].name).toBe("cat.gif");
     expect(list[1].name).toBe("dog.png");
   });
 
-  it("should restore a single meme from blacklist", function() {
+  it("should restore a single meme from blacklist", function () {
     hideMeme("/memes/cat.gif");
     hideMeme("/memes/dog.png");
     expect(window.hiddenMemes.length).toBe(2);
@@ -1147,7 +1282,7 @@ describe("hidden memes management (blacklist)", function() {
     expect(window.hiddenMemeNames.has("dog.png")).toBe(true);
   });
 
-  it("should clear all hidden memes", function() {
+  it("should clear all hidden memes", function () {
     hideMeme("/memes/cat.gif");
     hideMeme("/memes/dog.png");
     expect(window.hiddenMemes.length).toBe(2);
@@ -1157,74 +1292,95 @@ describe("hidden memes management (blacklist)", function() {
     expect(window.hiddenMemeNames.size).toBe(0);
   });
 
-  it("should show empty list when no hidden memes", function() {
-    var list = window.hiddenMemes.map(function(p) { return {
-      name: p.split("/").pop()
-    };});
+  it("should show empty list when no hidden memes", function () {
+    var list = window.hiddenMemes.map(function (p) {
+      return {
+        name: p.split("/").pop(),
+      };
+    });
     expect(list.length).toBe(0);
   });
 
-  it("context menu should have Blacklist option", function() {
-    var items = ["🔊 Play Audio", "✏️ Rename", "⭐ Add to Favorites", "🗑 Hide"];
+  it("context menu should have Blacklist option", function () {
+    var items = [
+      "🔊 Play Audio",
+      "✏️ Rename",
+      "⭐ Add to Favorites",
+      "🗑 Hide",
+    ];
     // Vérifie que Blacklist est un item séparé (ou combine Hide+Blacklist)
     var menuItems = items.concat(["🚫 Blacklist"]);
     expect(menuItems).toContain("🚫 Blacklist");
   });
 
-  it("Blacklist context action should call deleteMemes", function() {
+  it("Blacklist context action should call deleteMemes", function () {
     var called = false;
-    window.memedrop = { deleteMemes: function() { called = true; return Promise.resolve([{ ok: true }]); } };
+    window.memedrop = {
+      deleteMemes: function () {
+        called = true;
+        return Promise.resolve([{ ok: true }]);
+      },
+    };
     // Simule l'action
-    window.memedrop.deleteMemes(["/memes/cat.gif"]).then(function() {
+    window.memedrop.deleteMemes(["/memes/cat.gif"]).then(function () {
       expect(called).toBe(true);
     });
   });
 });
 
-describe("library sync request (download all)", function() {
-  beforeEach(function() {
-    window.memedrop = { syncAllMemes: function() { return Promise.resolve({ ok: true, count: 0 }); } };
+describe("library sync request (download all)", function () {
+  beforeEach(function () {
+    window.memedrop = {
+      syncAllMemes: function () {
+        return Promise.resolve({ ok: true, count: 0 });
+      },
+    };
   });
 
-  it("should call syncAllMemes(true) when receiving library_sync_request", function() {
+  it("should call syncAllMemes(true) when receiving library_sync_request", function () {
     var called = false;
-    window.memedrop.syncAllMemes = function(force) {
+    window.memedrop.syncAllMemes = function (force) {
       called = true;
       expect(force).toBe(true);
       return Promise.resolve({ ok: true, count: 5 });
     };
 
     // Simule la réception du message du bot
-    window.memedrop.syncAllMemes(true).then(function(r) {
+    window.memedrop.syncAllMemes(true).then(function (r) {
       expect(called).toBe(true);
       expect(r.count).toBe(5);
     });
   });
 
-  it("should have a Download All button", function() {
-    document.body.innerHTML = '<button id="btn-download-all">📥 Tout télécharger</button>';
+  it("should have a Download All button", function () {
+    document.body.innerHTML =
+      '<button id="btn-download-all">📥 Tout télécharger</button>';
     var btn = document.getElementById("btn-download-all");
     expect(btn).toBeTruthy();
     expect(btn.textContent).toContain("Tout t\u00e9l\u00e9charger");
   });
 });
 
-describe("shared filename format", function() {
-  it("should use original name without timestamp prefix", function() {
+describe("shared filename format", function () {
+  it("should use original name without timestamp prefix", function () {
     var originalName = "let-it-all-out-scream.mp4";
     var safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, "_");
     var filename = safeName;
     expect(filename).toBe("let-it-all-out-scream.mp4");
   });
 
-  it("should handle filenames with special chars", function() {
+  it("should handle filenames with special chars", function () {
     var originalName = "\uD83D\uDC4B#meme #trend (1).mp4";
     var safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, "_");
     expect(safeName).toBe("___meme__trend__1_.mp4");
   });
 
-  it("should handle collisions by adding suffix", function() {
-    var fsMock = { existsSync: function(p) { return p === "/memes/cat.gif"; } };
+  it("should handle collisions by adding suffix", function () {
+    var fsMock = {
+      existsSync: function (p) {
+        return p === "/memes/cat.gif";
+      },
+    };
     var memeFolder = "/memes";
     var safeName = "cat.gif";
     var destPath = memeFolder + "/" + safeName;
@@ -1239,9 +1395,10 @@ describe("shared filename format", function() {
   });
 });
 
-describe("caption toggle", function() {
-  it("should apply caption-below class to grid on toggle", function() {
-    document.body.innerHTML = '<div class="grid" id="grid"><div class="meme-card"><div class="meme-card-name">test</div></div></div>';
+describe("caption toggle", function () {
+  it("should apply caption-below class to grid on toggle", function () {
+    document.body.innerHTML =
+      '<div class="grid" id="grid"><div class="meme-card"><div class="meme-card-name">test</div></div></div>';
     var grid = document.getElementById("grid");
     var card = grid.querySelector(".meme-card");
 
@@ -1257,8 +1414,9 @@ describe("caption toggle", function() {
     expect(style.position).toBe("static");
   });
 
-  it("should toggle off and restore original classes", function() {
-    document.body.innerHTML = '<div class="grid" id="grid"><div class="meme-card"><div class="meme-card-name">test</div></div></div>';
+  it("should toggle off and restore original classes", function () {
+    document.body.innerHTML =
+      '<div class="grid" id="grid"><div class="meme-card"><div class="meme-card-name">test</div></div></div>';
     var grid = document.getElementById("grid");
     var card = grid.querySelector(".meme-card");
 

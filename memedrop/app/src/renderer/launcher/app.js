@@ -67,7 +67,8 @@ if (!window.memedrop) {
 }
 
 // ── Preview cache ──────────────────────────────────────────────────────────
-const previewCache = new Map();
+window.__previewCache = new Map();
+const previewCache = window.__previewCache;
 // Helper: cached version of getPreview (contextBridge properties are read-only,
 // so we can't override window.memedrop.getPreview directly)
 function getCachedPreview(path, kind) {
@@ -448,16 +449,22 @@ async function deleteSelected() {
 
 // ── Load memes ──────────────────────────────────────────────────────────
 async function loadMemes() {
+  // Vider le cache de previews pour forcer le rechargement
+  if (window.__previewCache) window.__previewCache.clear();
   try {
     allMemes = await window.memedrop.listMemes();
     // Check if folder exists
-    const folderCheck = await window.memedrop.folderExists().catch(() => ({ exists: true }));
+    const folderCheck = await window.memedrop
+      .folderExists()
+      .catch(() => ({ exists: true }));
     if (gridEmpty) {
       if (!folderCheck?.exists) {
-        gridEmpty.textContent = "📁 Dossier memes introuvable — Configurez-le dans Settings";
+        gridEmpty.textContent =
+          "📁 Dossier memes introuvable — Configurez-le dans Settings";
         gridEmpty.style.display = "block";
       } else if (!allMemes || allMemes.length === 0) {
-        gridEmpty.textContent = "📂 Aucun meme — Ajoutez des fichiers dans le dossier MemeDrop/memes";
+        gridEmpty.textContent =
+          "📂 Aucun meme — Ajoutez des fichiers dans le dossier MemeDrop/memes";
         gridEmpty.style.display = "block";
       } else {
         gridEmpty.style.display = "none";
@@ -490,9 +497,12 @@ async function renderGrid() {
     const now = new Date();
     let startDate;
     if (dateFilter === "today") {
-      startDate = new Date(now); startDate.setHours(0,0,0,0);
+      startDate = new Date(now);
+      startDate.setHours(0, 0, 0, 0);
     } else if (dateFilter === "week") {
-      startDate = new Date(now); startDate.setDate(now.getDate() - now.getDay()); startDate.setHours(0,0,0,0);
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - now.getDay());
+      startDate.setHours(0, 0, 0, 0);
     } else if (dateFilter === "month") {
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
     }
@@ -663,7 +673,9 @@ async function renderGrid() {
               : document.createElement("img");
           el.src = fallbackUrl;
           // Supprimer les erreurs de chargement silencieusement
-          el.onerror = function() { this.style.display = "none"; };
+          el.onerror = function () {
+            this.style.display = "none";
+          };
           if (meme.kind === "video") {
             el.muted = true;
             el.loop = true;
@@ -827,7 +839,8 @@ let slideshowIndex = 0;
 let slideshowMemes = [];
 
 function startSlideshow(memes) {
-  if (!memes || memes.length === 0) return toast("Aucun meme à afficher", "error");
+  if (!memes || memes.length === 0)
+    return toast("Aucun meme à afficher", "error");
   slideshowMemes = memes;
   slideshowIndex = 0;
   const overlay = document.getElementById("slideshow-overlay");
@@ -853,20 +866,45 @@ function nextSlide() {
 }
 
 function prevSlide() {
-  slideshowIndex = (slideshowIndex - 1 + slideshowMemes.length) % slideshowMemes.length;
+  slideshowIndex =
+    (slideshowIndex - 1 + slideshowMemes.length) % slideshowMemes.length;
   showSlide(slideshowIndex);
 }
 
 document.getElementById("btn-slideshow")?.addEventListener("click", () => {
-  const filtered = allMemes; // Use current loaded memes
+  const filtered = allMemes;
   startSlideshow(filtered);
 });
+document
+  .getElementById("btn-reset-all")
+  ?.addEventListener("click", async () => {
+    if (
+      !confirm(
+        "🔁 Reset complet : vide la blacklist et relance une synchro avec tout le monde. Continuer ?",
+      )
+    )
+      return;
+    try {
+      const r = await window.memedrop.forceReset();
+      if (!r?.ok) throw new Error(r?.error || "reset failed");
+      window.memedrop.requestLibrarySync().catch(() => {});
+      window.memedrop.syncAllMemes(true).catch(() => {});
+      await loadMemes();
+      await updateBlacklistBadge();
+      toast("🔁 Reset complet : blacklist videe + synchro relancee");
+    } catch (e) {
+      toast("Erreur du reset: " + e.message, "error");
+    }
+  });
 document.getElementById("slideshow-prev")?.addEventListener("click", prevSlide);
 document.getElementById("slideshow-next")?.addEventListener("click", nextSlide);
 document.getElementById("slideshow-close")?.addEventListener("click", () => {
   const overlay = document.getElementById("slideshow-overlay");
   if (overlay) overlay.classList.add("hidden");
-  if (slideshowInterval) { clearInterval(slideshowInterval); slideshowInterval = null; }
+  if (slideshowInterval) {
+    clearInterval(slideshowInterval);
+    slideshowInterval = null;
+  }
 });
 document.getElementById("slideshow-play")?.addEventListener("click", () => {
   if (slideshowInterval) {
@@ -882,7 +920,8 @@ document.getElementById("slideshow-play")?.addEventListener("click", () => {
 // ── Hover tooltip ──────────────────────────────────────────────────
 const memeTooltip = document.createElement("div");
 memeTooltip.className = "meme-tooltip";
-memeTooltip.style.cssText = "position:fixed;display:none;z-index:9999;pointer-events:none;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.1);background:#000";
+memeTooltip.style.cssText =
+  "position:fixed;display:none;z-index:9999;pointer-events:none;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.1);background:#000";
 document.body.appendChild(memeTooltip);
 
 function setupTooltip(card, previewUrl) {
@@ -896,7 +935,9 @@ function setupTooltip(card, previewUrl) {
     positionTooltip(e);
   });
   card.addEventListener("mousemove", positionTooltip);
-  card.addEventListener("mouseleave", () => { memeTooltip.style.display = "none"; });
+  card.addEventListener("mouseleave", () => {
+    memeTooltip.style.display = "none";
+  });
 }
 function positionTooltip(e) {
   const x = Math.min(e.clientX + 16, window.innerWidth - 320);
@@ -916,14 +957,20 @@ function applyThumbnailShape(shape) {
 }
 
 // ─── Tooltip cleanup on grid re-render ────────────────────────────
-function hideTooltip() { memeTooltip.style.display = "none"; }
-document.getElementById("btn-download-all")?.addEventListener("click", async () => {
-  if (!window.memedrop.requestLibrarySync) return toast("Fonction non disponible", "error");
-  toast("📥 Demande de synchronisation envoyée…");
-  const r = await window.memedrop.requestLibrarySync();
-  if (r && r.ok) toast(`📥 Demande envoyée, les autres vont t'envoyer leurs memes`);
-  else toast("❌ Échec de la demande", "error");
-});
+function hideTooltip() {
+  memeTooltip.style.display = "none";
+}
+document
+  .getElementById("btn-download-all")
+  ?.addEventListener("click", async () => {
+    if (!window.memedrop.requestLibrarySync)
+      return toast("Fonction non disponible", "error");
+    toast("📥 Demande de synchronisation envoyée…");
+    const r = await window.memedrop.requestLibrarySync();
+    if (r && r.ok)
+      toast(`📥 Demande envoyée, les autres vont t'envoyer leurs memes`);
+    else toast("❌ Échec de la demande", "error");
+  });
 document
   .getElementById("btn-open-folder")
   ?.addEventListener("click", () => window.memedrop.openMemeFolder());
@@ -970,7 +1017,8 @@ async function updateBlacklistBadge() {
     if (btn) {
       const count = hidden ? hidden.length : 0;
       btn.textContent = count > 0 ? "🚫 " + count : "🚫 Blacklist";
-      btn.title = count > 0 ? count + " meme(s) caché(s)" : "Gérer les memes cachés";
+      btn.title =
+        count > 0 ? count + " meme(s) caché(s)" : "Gérer les memes cachés";
     }
   } catch {}
 }
@@ -986,7 +1034,8 @@ async function openBlacklistModal() {
   modal.classList.remove("hidden");
 
   if (!hidden || hidden.length === 0) {
-    listEl.innerHTML = '<div class="blacklist-empty">✅ Aucun meme dans la blacklist</div>';
+    listEl.innerHTML =
+      '<div class="blacklist-empty">✅ Aucun meme dans la blacklist</div>';
     return;
   }
 
@@ -1002,7 +1051,8 @@ async function openBlacklistModal() {
     // Preview thumbnail
     const preview = document.createElement("img");
     preview.src = "file:///" + meme.path.replace(/\\/g, "/");
-    preview.style.cssText = "width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0;background:var(--bg-card)";
+    preview.style.cssText =
+      "width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0;background:var(--bg-card)";
     preview.loading = "lazy";
 
     item.appendChild(preview);
@@ -1038,37 +1088,80 @@ async function openBlacklistModal() {
 }
 
 // Fermeture blacklist modal
-document.getElementById("btn-blacklist-close")?.addEventListener("click", () => {
-  document.getElementById("blacklist-modal")?.classList.add("hidden");
-});
-document.getElementById("blacklist-modal-close")?.addEventListener("click", () => {
-  document.getElementById("blacklist-modal")?.classList.add("hidden");
-});
+document
+  .getElementById("btn-blacklist-close")
+  ?.addEventListener("click", () => {
+    document.getElementById("blacklist-modal")?.classList.add("hidden");
+  });
+document
+  .getElementById("blacklist-modal-close")
+  ?.addEventListener("click", () => {
+    document.getElementById("blacklist-modal")?.classList.add("hidden");
+  });
 
 // Restaurer tout
-document.getElementById("btn-blacklist-restore-all")?.addEventListener("click", async () => {
-  const hidden = await window.memedrop.listHiddenMemes();
-  if (!hidden || hidden.length === 0) return;
-  for (const m of hidden) {
-    await window.memedrop.restoreMeme(m.path);
-  }
-  await loadMemes();
-  document.getElementById("blacklist-modal")?.classList.add("hidden");
-  toast(`♻️ ${hidden.length} meme(s) restauré(s)`);
-});
+document
+  .getElementById("btn-blacklist-restore-all")
+  ?.addEventListener("click", async () => {
+    const hidden = await window.memedrop.listHiddenMemes();
+    if (!hidden || hidden.length === 0) return;
+    for (const m of hidden) {
+      await window.memedrop.restoreMeme(m.path);
+    }
+    await loadMemes();
+    document.getElementById("blacklist-modal")?.classList.add("hidden");
+    toast(`♻️ ${hidden.length} meme(s) restauré(s)`);
+  });
 
 // Vider toute la blacklist (supprime définitivement)
-document.getElementById("btn-blacklist-clear-all")?.addEventListener("click", async () => {
-  const hidden = await window.memedrop.listHiddenMemes();
-  if (!hidden || hidden.length === 0) return;
-  if (!confirm(`Supprimer définitivement les ${hidden.length} fichier(s) de la blacklist ?`)) return;
-  for (const m of hidden) {
-    await window.memedrop.restoreMeme(m.path);
-  }
-  await loadMemes();
-  document.getElementById("blacklist-modal")?.classList.add("hidden");
-  toast(`🗑️ ${hidden.length} meme(s) retiré(s) de la blacklist`);
-});
+document
+  .getElementById("btn-blacklist-clear-all")
+  ?.addEventListener("click", async () => {
+    const hidden = await window.memedrop.listHiddenMemes();
+    if (!hidden || hidden.length === 0) return;
+    if (
+      !confirm(
+        `Supprimer définitivement les ${hidden.length} fichier(s) de la blacklist ?`,
+      )
+    )
+      return;
+    for (const m of hidden) {
+      await window.memedrop.restoreMeme(m.path);
+    }
+    await loadMemes();
+    document.getElementById("blacklist-modal")?.classList.add("hidden");
+    toast(`🗑️ ${hidden.length} meme(s) retiré(s) de la blacklist`);
+  });
+
+document
+  .getElementById("btn-blacklist-reset")
+  ?.addEventListener("click", async () => {
+    if (
+      !confirm(
+        "🔁 Reset complet : tous les memes caches seront remis dans la grille, et une nouvelle synchro sera demandee aux autres. Continuer ?",
+      )
+    )
+      return;
+    try {
+      // 1. Vider la blacklist cote serveur
+      const r = await window.memedrop.forceReset();
+      if (!r || !r.ok) throw new Error(r?.error || "reset failed");
+
+      // 2. Demander aux autres de re-sync leur bibliotheque
+      window.memedrop.requestLibrarySync().catch(() => {});
+
+      // 3. Re-envoyer notre bibliotheque
+      window.memedrop.syncAllMemes(true).catch(() => {});
+
+      // 4. Recharger la grille
+      await loadMemes();
+      await updateBlacklistBadge();
+      document.getElementById("blacklist-modal")?.classList.add("hidden");
+      toast("🔁 Reset complet : blacklist videe + nouvelle synchro demandee");
+    } catch (e) {
+      toast("Erreur du reset: " + e.message, "error");
+    }
+  });
 
 // Escape key pour fermer la blacklist
 document.addEventListener("keydown", (e) => {
@@ -1119,7 +1212,11 @@ document.addEventListener("keydown", (e) => {
     if (advanced) advanced.classList.toggle("hidden");
   }
   // Ctrl+Shift+L → renvoyer le dernier drop
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "l" || e.key === "L")) {
+  if (
+    (e.ctrlKey || e.metaKey) &&
+    e.shiftKey &&
+    (e.key === "l" || e.key === "L")
+  ) {
     e.preventDefault();
     handleResend();
   }
@@ -1146,7 +1243,8 @@ function renderTags() {
     const memeTags = selectedMeme.tags || [];
     if (memeTags.length > 0) {
       const header = document.createElement("div");
-      header.style.cssText = "font-size:10px;color:var(--text-dim);margin-bottom:4px";
+      header.style.cssText =
+        "font-size:10px;color:var(--text-dim);margin-bottom:4px";
       header.textContent = "Tags de " + selectedMeme.name + " :";
       tagList.appendChild(header);
 
@@ -1154,7 +1252,7 @@ function renderTags() {
         const pill = document.createElement("span");
         pill.className = "tag-pill tag-pill-meme";
         pill.textContent = tag + " ✕";
-        pill.title = "Retirer le tag \"" + tag + "\"";
+        pill.title = 'Retirer le tag "' + tag + '"';
         pill.addEventListener("click", async (e) => {
           e.stopPropagation();
           const currentTags = selectedMeme.tags || [];
@@ -1163,7 +1261,7 @@ function renderTags() {
           selectedMeme.tags = updated;
           await loadTags();
           renderGrid();
-          toast("🏷️ Tag \"" + tag + "\" retiré");
+          toast('🏷️ Tag "' + tag + '" retiré');
         });
         tagList.appendChild(pill);
       }
@@ -1612,11 +1710,14 @@ async function renderAudioSelect(selectedPath) {
   for (const opt of panelAudioSelect.options) {
     if (!opt.value) continue;
     promises.push(
-      window.memedrop.getAudioDuration(opt.value).then(function(info) {
-        if (info && info.label !== "?") {
-          opt.textContent = opt.textContent + " (" + info.label + ")";
-        }
-      }).catch(function() {})
+      window.memedrop
+        .getAudioDuration(opt.value)
+        .then(function (info) {
+          if (info && info.label !== "?") {
+            opt.textContent = opt.textContent + " (" + info.label + ")";
+          }
+        })
+        .catch(function () {}),
     );
   }
   await Promise.all(promises);
@@ -1638,11 +1739,13 @@ panelDuration?.addEventListener("input", () => {
 // Sync audio checkbox → désactiver le slider durée
 const syncAudioCb = document.getElementById("panel-sync-audio-duration");
 if (syncAudioCb && panelDuration && panelDurationOut) {
-  syncAudioCb.addEventListener("change", async function() {
+  syncAudioCb.addEventListener("change", async function () {
     panelDuration.disabled = this.checked;
     if (this.checked && panelAudioSelect && panelAudioSelect.value) {
       try {
-        const info = await window.memedrop.getAudioDuration(panelAudioSelect.value);
+        const info = await window.memedrop.getAudioDuration(
+          panelAudioSelect.value,
+        );
         if (info && info.label) {
           panelDurationOut.textContent = info.label + " (sync)";
         } else {
@@ -1656,7 +1759,7 @@ if (syncAudioCb && panelDuration && panelDurationOut) {
     }
   });
   // Also update when audio selection changes
-  panelAudioSelect?.addEventListener("change", async function() {
+  panelAudioSelect?.addEventListener("change", async function () {
     if (syncAudioCb.checked && this.value) {
       try {
         const info = await window.memedrop.getAudioDuration(this.value);
@@ -1930,13 +2033,16 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
     lastTarget = target;
     let result;
     if (selectedMeme.isWeblink) {
-      result = await window.memedrop.sendDropUrl({
+      const captionBelow =
+        document.getElementById("panel-caption-below")?.checked || false;
+      result = await window.memedrop.sendDrop({
         target,
         url: selectedMeme.url,
         audioPath,
         caption,
         rain,
         kind: selectedMeme.kind,
+        captionBelow,
       });
     } else if (selectedMeme.isCollage) {
       // Send each file individually to preserve GIF animation / video
@@ -1955,7 +2061,9 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
       }
       result = { ok: sentCount > 0, count: sentCount };
     } else {
-      const syncDuration = document.getElementById("panel-sync-audio-duration")?.checked;
+      const syncDuration = document.getElementById(
+        "panel-sync-audio-duration",
+      )?.checked;
       let effectiveDuration = currentDuration;
       if (syncDuration && audioPath) {
         try {
@@ -1969,7 +2077,8 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
           effectiveDuration = 10;
         }
       }
-      const captionBelow = document.getElementById("panel-caption-below")?.checked || false;
+      const captionBelow =
+        document.getElementById("panel-caption-below")?.checked || false;
       result = await window.memedrop.sendDrop({
         target,
         filePath: selectedMeme.path,
@@ -2001,10 +2110,21 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
   sendBtn.textContent = "🚀 Envoyer";
 
   if (targets.length > 0) {
-    panelStatus.className = failList.length === targets.length ? "panel-status error" : "panel-status success";
+    panelStatus.className =
+      failList.length === targets.length
+        ? "panel-status error"
+        : "panel-status success";
     if (successList.length > 0 && failList.length > 0) {
-      panelStatus.textContent = "✅ " + successList.length + "/" + targets.length + " — " + failList.join(", ") + " ❌";
-      panelStatus.title = "Reçu: " + successList.join(", ") + "\nÉchec: " + failList.join(", ");
+      panelStatus.textContent =
+        "✅ " +
+        successList.length +
+        "/" +
+        targets.length +
+        " — " +
+        failList.join(", ") +
+        " ❌";
+      panelStatus.title =
+        "Reçu: " + successList.join(", ") + "\nÉchec: " + failList.join(", ");
     } else if (failList.length === 0) {
       panelStatus.textContent = "✅ Envoyé à " + successList.join(", ");
     } else {
@@ -2123,7 +2243,9 @@ async function handleResend() {
 // ── Caption Templates ────────────────────────────────────────────
 let captionTemplates = [];
 try {
-  captionTemplates = JSON.parse(localStorage.getItem("memedrop_captions") || "[]");
+  captionTemplates = JSON.parse(
+    localStorage.getItem("memedrop_captions") || "[]",
+  );
 } catch {}
 
 function renderCaptionTemplates() {
@@ -2141,17 +2263,20 @@ function renderCaptionTemplates() {
 document.getElementById("btn-save-caption")?.addEventListener("click", () => {
   const val = panelCaption?.value?.trim();
   if (!val) return toast("Écris d'abord un message", "error");
-  if (captionTemplates.includes(val)) return toast("Message déjà sauvegardé", "error");
+  if (captionTemplates.includes(val))
+    return toast("Message déjà sauvegardé", "error");
   captionTemplates.push(val);
   localStorage.setItem("memedrop_captions", JSON.stringify(captionTemplates));
   renderCaptionTemplates();
   toast("💾 Message sauvegardé");
 });
 
-document.getElementById("caption-templates")?.addEventListener("change", (e) => {
-  const val = e.target.value;
-  if (val && panelCaption) panelCaption.value = val;
-});
+document
+  .getElementById("caption-templates")
+  ?.addEventListener("change", (e) => {
+    const val = e.target.value;
+    if (val && panelCaption) panelCaption.value = val;
+  });
 
 // ── Character counter for caption ─────────────────────────────────
 if (panelCaption) {
@@ -2610,7 +2735,9 @@ panelTargetAdd?.addEventListener("keydown", (e) => {
 // Remove selected target (custom, Discord ou recent)
 document.getElementById("btn-remove-target")?.addEventListener("click", () => {
   if (!panelTarget) return;
-  const selected = Array.from(panelTarget.selectedOptions).map((o) => o.value.trim());
+  const selected = Array.from(panelTarget.selectedOptions).map((o) =>
+    o.value.trim(),
+  );
   if (selected.length === 0) {
     toast("Sélectionne une cible à retirer", "error");
     return;
@@ -2860,9 +2987,11 @@ function initTriagePanel() {
     triageState.query = e.target.value;
   });
 
-  document.getElementById("triage-date-select")?.addEventListener("change", (e) => {
-    triageState.dateFilter = e.target.value;
-  });
+  document
+    .getElementById("triage-date-select")
+    ?.addEventListener("change", (e) => {
+      triageState.dateFilter = e.target.value;
+    });
 
   document
     .getElementById("btn-apply-triage")
@@ -2929,8 +3058,12 @@ function updateTriageCount(filteredCount) {
   if (el) {
     const total = allMemes ? allMemes.length : 0;
     // Utiliser filteredCount passé en paramètre, ou le lire depuis le DOM
-    const visible = filteredCount !== undefined ? filteredCount :
-      (countEl ? parseInt(countEl.textContent, 10) || total : total);
+    const visible =
+      filteredCount !== undefined
+        ? filteredCount
+        : countEl
+          ? parseInt(countEl.textContent, 10) || total
+          : total;
     if (visible !== total) {
       el.textContent = `${visible} / ${total} memes`;
     } else {
@@ -2950,10 +3083,9 @@ async function setupFileWatcher() {
 
   try {
     unsubLibraryChanged = window.memedrop.onLibraryChanged(() => {
-      if (typeof previewCache !== "undefined" && previewCache) previewCache.clear();
       loadMemes();
       loadAudioLibrary();
-      toast("📂 Bibliothèque mise à jour");
+      toast("Bibliotheque mise a jour");
     });
   } catch (e) {
     console.warn("onLibraryChanged not available", e);
@@ -2989,12 +3121,11 @@ async function setupFileWatcher() {
   }
 
   // Écouter les demandes de sync des autres utilisateurs
-  // Écouter les demandes de sync des autres utilisateurs (désactivé : manuel seulement)
-  // Décommente pour réactiver :
-  /*
   try {
     window.memedrop.onLibrarySyncRequested(() => {
-      console.log("[sync] library sync requested by another user, sending memes...");
+      console.log(
+        "[sync] library sync requested by another user, sending memes...",
+      );
       if (window.memedrop.syncAllMemes) {
         window.memedrop.syncAllMemes(true).catch(() => {});
       }
@@ -3002,7 +3133,6 @@ async function setupFileWatcher() {
   } catch (e) {
     console.warn("onLibrarySyncRequested not available", e);
   }
-  */
 }
 
 // ── Collage Mode ────────────────────────────────────────────────────────
@@ -3037,7 +3167,8 @@ document.getElementById("btn-clear-collage")?.addEventListener("click", () => {
 
 // ── Random Drop ────────────────────────────────────────────────
 document.getElementById("btn-random-drop")?.addEventListener("click", () => {
-  if (!allMemes || allMemes.length === 0) return toast("Aucun meme à drop", "error");
+  if (!allMemes || allMemes.length === 0)
+    return toast("Aucun meme à drop", "error");
   const randomMeme = allMemes[Math.floor(Math.random() * allMemes.length)];
   openDropPanel(randomMeme);
   toast(`🎲 Drop aléatoire : ${randomMeme.name}`);
@@ -3047,7 +3178,9 @@ document.getElementById("btn-random-drop")?.addEventListener("click", () => {
 let listViewMode = false;
 document.getElementById("btn-view-toggle")?.addEventListener("click", () => {
   listViewMode = !listViewMode;
-  document.getElementById("btn-view-toggle").textContent = listViewMode ? "📄" : "📋";
+  document.getElementById("btn-view-toggle").textContent = listViewMode
+    ? "📄"
+    : "📋";
   document.getElementById("grid").classList.toggle("list-view", listViewMode);
   toast(listViewMode ? "📄 Vue liste" : "📋 Vue grille");
 });
@@ -3056,8 +3189,10 @@ document.getElementById("btn-view-toggle")?.addEventListener("click", () => {
 let captionBelow = false;
 document.getElementById("btn-caption-toggle")?.addEventListener("click", () => {
   captionBelow = !captionBelow;
-  document.getElementById("grid").classList.toggle("caption-below", captionBelow);
-  document.querySelectorAll(".meme-card").forEach(function(c) {
+  document
+    .getElementById("grid")
+    .classList.toggle("caption-below", captionBelow);
+  document.querySelectorAll(".meme-card").forEach(function (c) {
     c.classList.toggle("caption-below", captionBelow);
   });
   toast(captionBelow ? "📝 Légende sous l'image" : "📝 Légende sur l'image");
@@ -3298,10 +3433,13 @@ async function initSettings() {
     const sched = await window.memedrop.getMuteSchedule();
     if (sched) {
       scheduleCheckbox.checked = sched.enabled || false;
-      document.getElementById("schedule-start-hour").value = sched.startHour || 22;
-      document.getElementById("schedule-start-minute").value = sched.startMinute || 0;
+      document.getElementById("schedule-start-hour").value =
+        sched.startHour || 22;
+      document.getElementById("schedule-start-minute").value =
+        sched.startMinute || 0;
       document.getElementById("schedule-end-hour").value = sched.endHour || 8;
-      document.getElementById("schedule-end-minute").value = sched.endMinute || 0;
+      document.getElementById("schedule-end-minute").value =
+        sched.endMinute || 0;
       scheduleOptions.classList.toggle("hidden", !sched.enabled);
     }
   }
@@ -3309,21 +3447,31 @@ async function initSettings() {
     if (!window.memedrop.setMuteSchedule) return;
     await window.memedrop.setMuteSchedule({
       enabled: scheduleCheckbox.checked,
-      startHour: parseInt(document.getElementById("schedule-start-hour").value) || 22,
-      startMinute: parseInt(document.getElementById("schedule-start-minute").value) || 0,
-      endHour: parseInt(document.getElementById("schedule-end-hour").value) || 8,
-      endMinute: parseInt(document.getElementById("schedule-end-minute").value) || 0,
+      startHour:
+        parseInt(document.getElementById("schedule-start-hour").value) || 22,
+      startMinute:
+        parseInt(document.getElementById("schedule-start-minute").value) || 0,
+      endHour:
+        parseInt(document.getElementById("schedule-end-hour").value) || 8,
+      endMinute:
+        parseInt(document.getElementById("schedule-end-minute").value) || 0,
     });
   }
   loadSchedule();
   scheduleCheckbox.addEventListener("change", () => {
     scheduleOptions.classList.toggle("hidden", !scheduleCheckbox.checked);
     saveSchedule();
-    toast(scheduleCheckbox.checked ? "🤫 Ne pas déranger activé" : "🔔 Mode normal");
+    toast(
+      scheduleCheckbox.checked ? "🤫 Ne pas déranger activé" : "🔔 Mode normal",
+    );
   });
-  document.querySelectorAll("#schedule-start-hour, #schedule-start-minute, #schedule-end-hour, #schedule-end-minute").forEach(el => {
-    el.addEventListener("change", saveSchedule);
-  });
+  document
+    .querySelectorAll(
+      "#schedule-start-hour, #schedule-start-minute, #schedule-end-hour, #schedule-end-minute",
+    )
+    .forEach((el) => {
+      el.addEventListener("change", saveSchedule);
+    });
 
   if (settingOpacity) {
     settingOpacity.value = settings.opacity ?? 1.0;
@@ -3379,7 +3527,9 @@ async function initSettings() {
   if (settingHardwareAccel) {
     settingHardwareAccel.checked = !!settings.hardwareAcceleration;
     settingHardwareAccel.addEventListener("change", (e) => {
-      window.memedrop.updateSettings({ hardwareAcceleration: e.target.checked });
+      window.memedrop.updateSettings({
+        hardwareAcceleration: e.target.checked,
+      });
     });
   }
 
@@ -3487,17 +3637,27 @@ async function initSettings() {
       input.click();
     });
 
-  document.getElementById("btn-reset-app")?.addEventListener("click", async () => {
-    if (!confirm("Réinitialiser tous les réglages ? Les fichiers memes ne seront pas supprimés.")) return;
-    if (!confirm("Confirmation : toutes les données locales seront effacées.")) return;
-    const r = await window.memedrop.resetApp();
-    if (r && r.ok) {
-      toast("🗑️ App réinitialisée, recharge...");
-      setTimeout(() => window.location.reload(), 1000);
-    } else {
-      toast("Erreur: " + (r?.error || "inconnue"), "error");
-    }
-  });
+  document
+    .getElementById("btn-reset-app")
+    ?.addEventListener("click", async () => {
+      if (
+        !confirm(
+          "Réinitialiser tous les réglages ? Les fichiers memes ne seront pas supprimés.",
+        )
+      )
+        return;
+      if (
+        !confirm("Confirmation : toutes les données locales seront effacées.")
+      )
+        return;
+      const r = await window.memedrop.resetApp();
+      if (r && r.ok) {
+        toast("🗑️ App réinitialisée, recharge...");
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        toast("Erreur: " + (r?.error || "inconnue"), "error");
+      }
+    });
 
   if (pairingCodeDisplay) {
     pairingCodeDisplay.textContent = settings.linkIdentity || "------";
@@ -3667,10 +3827,15 @@ async function init() {
   // Apply launcher theme (dark/light)
   const allSettings = await window.memedrop.getSettings();
   if (allSettings.launcherTheme) applyLauncherTheme(allSettings.launcherTheme);
-  if (allSettings.thumbnailShape) applyThumbnailShape(allSettings.thumbnailShape);
+  if (allSettings.thumbnailShape)
+    applyThumbnailShape(allSettings.thumbnailShape);
   if (allSettings.customCSS) {
     let cssEl = document.getElementById("custom-theme");
-    if (!cssEl) { cssEl = document.createElement("style"); cssEl.id = "custom-theme"; document.head.appendChild(cssEl); }
+    if (!cssEl) {
+      cssEl = document.createElement("style");
+      cssEl.id = "custom-theme";
+      document.head.appendChild(cssEl);
+    }
     cssEl.textContent = allSettings.customCSS;
   }
 
@@ -3701,23 +3866,34 @@ async function init() {
     .getElementById("btn-clear-selection")
     ?.addEventListener("click", clearSelection);
 
-  document.getElementById("btn-tag-selected")?.addEventListener("click", async () => {
-    const paths = Array.from(selectedPaths);
-    if (paths.length === 0) return;
-    const tag = prompt("Tag \u00e0 ajouter/retirer (ex: fun) :");
-    if (!tag) return;
-    for (const p of paths) {
-      const current = allTagsMap[p] || [];
-      if (current.includes(tag)) {
-        await window.memedrop.setTags(p, current.filter(t => t !== tag));
-      } else {
-        await window.memedrop.setTags(p, [...current, tag]);
+  document
+    .getElementById("btn-tag-selected")
+    ?.addEventListener("click", async () => {
+      const paths = Array.from(selectedPaths);
+      if (paths.length === 0) return;
+      const tag = prompt("Tag \u00e0 ajouter/retirer (ex: fun) :");
+      if (!tag) return;
+      for (const p of paths) {
+        const current = allTagsMap[p] || [];
+        if (current.includes(tag)) {
+          await window.memedrop.setTags(
+            p,
+            current.filter((t) => t !== tag),
+          );
+        } else {
+          await window.memedrop.setTags(p, [...current, tag]);
+        }
       }
-    }
-    await loadTags();
-    renderGrid();
-    toast("\uD83C\uDFF7\uFE0F Tag \"" + tag + "\" appliqu\u00E9 \u00E0 " + paths.length + " meme(s)");
-  });
+      await loadTags();
+      renderGrid();
+      toast(
+        '\uD83C\uDFF7\uFE0F Tag "' +
+          tag +
+          '" appliqu\u00E9 \u00E0 ' +
+          paths.length +
+          " meme(s)",
+      );
+    });
 
   // Audio play listener
   try {
@@ -3790,7 +3966,8 @@ document.addEventListener("paste", async (e) => {
   if (isMediaUrl(text)) {
     try {
       const rawUrl = text.trim();
-      const isSocialUrl = /youtube\.com|youtu\.be|spotify\.com|open\.spotify\.com/i.test(rawUrl);
+      const isSocialUrl =
+        /youtube\.com|youtu\.be|spotify\.com|open\.spotify\.com/i.test(rawUrl);
 
       if (isSocialUrl && window.memedrop.resolveUrl) {
         // YouTube/Spotify → résoudre pour avoir la preview, mais garder l'URL originale
@@ -3810,7 +3987,7 @@ document.addEventListener("paste", async (e) => {
           downloaded.isWeblink = true;
           allMemes.unshift(downloaded);
           renderGrid();
-          toast(`📥 ${downloaded.name} (lien ${resolved.kind || 'media'})`);
+          toast(`📥 ${downloaded.name} (lien ${resolved.kind || "media"})`);
           window.memedrop.syncMeme(downloaded).catch(() => {});
           openDropPanel(downloaded);
         } else {

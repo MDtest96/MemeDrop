@@ -97,7 +97,12 @@ function detectKindFromBuffer(buffer) {
   }
 
   // WebM / MKV: EBML header
-  if (buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) {
+  if (
+    buffer[0] === 0x1a &&
+    buffer[1] === 0x45 &&
+    buffer[2] === 0xdf &&
+    buffer[3] === 0xa3
+  ) {
     return { ext: ".webm", kind: "video" };
   }
 
@@ -107,12 +112,20 @@ function detectKindFromBuffer(buffer) {
   }
 
   // MP3 without ID3 (MPEG sync)
-  if (buffer[0] === 0xff && (buffer[1] === 0xfb || buffer[1] === 0xf3 || buffer[1] === 0xf2)) {
+  if (
+    buffer[0] === 0xff &&
+    (buffer[1] === 0xfb || buffer[1] === 0xf3 || buffer[1] === 0xf2)
+  ) {
     return { ext: ".mp3", kind: "audio" };
   }
 
   // OGG: 4F 67 67 53
-  if (buffer[0] === 0x4f && buffer[1] === 0x67 && buffer[2] === 0x67 && buffer[3] === 0x53) {
+  if (
+    buffer[0] === 0x4f &&
+    buffer[1] === 0x67 &&
+    buffer[2] === 0x67 &&
+    buffer[3] === 0x53
+  ) {
     return { ext: ".ogg", kind: "audio" };
   }
 
@@ -175,47 +188,49 @@ function setupMemes(store, app) {
   // ── Scanne le dossier et retourne tous les fichiers détectés ──────────
   function scanMemeFolder(folder) {
     if (!fs.existsSync(folder)) return [];
-    return fs
-      .readdirSync(folder)
-      .map((f) => {
-        const fullPath = path.join(folder, f);
-        // Get file creation time for date filtering
-        let addedAt = null;
-        try {
-          const stat = fs.statSync(fullPath);
-          addedAt = stat.birthtime || stat.mtime;
-        } catch {}
-        const ext = path.extname(f).toLowerCase();
-        if (validExts.includes(ext)) {
+    return fs.readdirSync(folder).map((f) => {
+      const fullPath = path.join(folder, f);
+      // Get file creation time for date filtering
+      let addedAt = null;
+      try {
+        const stat = fs.statSync(fullPath);
+        addedAt = stat.birthtime || stat.mtime;
+      } catch {}
+      const ext = path.extname(f).toLowerCase();
+      if (validExts.includes(ext)) {
+        return {
+          name: path.parse(f).name,
+          path: fullPath,
+          kind: kindMap[ext] || "image",
+          addedAt,
+        };
+      }
+      // Extensionless file — try magic byte detection
+      if (!ext) {
+        const detected = probeFileKind(fullPath);
+        if (detected) {
           return {
             name: path.parse(f).name,
             path: fullPath,
-            kind: kindMap[ext] || "image",
+            kind: detected.kind,
             addedAt,
           };
         }
-        // Extensionless file — try magic byte detection
-        if (!ext) {
-          const detected = probeFileKind(fullPath);
-          if (detected) {
-            return {
-              name: path.parse(f).name,
-              path: fullPath,
-              kind: detected.kind,
-              addedAt,
-            };
-          }
-        }
-        return null; // Unknown / unsupported type
-      });
+      }
+      return null; // Unknown / unsupported type
+    });
   }
 
   ipcMain.handle("memes:list", () => {
     const folder = memeFolder();
     const hidden = new Set(store.get("hiddenMemes") || []);
     const hiddenNames = new Set(store.get("hiddenMemeNames") || []);
-    return scanMemeFolder(folder)
-      .filter((m) => m !== null && !hidden.has(m.path) && !hiddenNames.has(path.basename(m.path)));
+    return scanMemeFolder(folder).filter(
+      (m) =>
+        m !== null &&
+        !hidden.has(m.path) &&
+        !hiddenNames.has(path.basename(m.path)),
+    );
   });
 
   // ── Restaure un meme caché ──────────────────────────────────────────────
@@ -237,8 +252,9 @@ function setupMemes(store, app) {
   ipcMain.handle("memes:listHidden", () => {
     const folder = memeFolder();
     const hidden = new Set(store.get("hiddenMemes") || []);
-    return scanMemeFolder(folder)
-      .filter((m) => m !== null && hidden.has(m.path));
+    return scanMemeFolder(folder).filter(
+      (m) => m !== null && hidden.has(m.path),
+    );
   });
 
   ipcMain.handle("memes:sort", () => {});
@@ -289,7 +305,10 @@ function setupMemes(store, app) {
     };
   });
 
-  ipcMain.handle("memes:preview", (e, p) => `file:///${encodeURI(p.replace(/\\/g, "/"))}`);
+  ipcMain.handle(
+    "memes:preview",
+    (e, p) => `file:///${encodeURI(p.replace(/\\/g, "/"))}`,
+  );
 
   ipcMain.handle("memes:openFolder", () => {
     const folder = memeFolder();
@@ -418,16 +437,41 @@ function setupMemes(store, app) {
   // ── Paginated meme listing for lazy loading ─────────────────────────
   ipcMain.handle("memes:listPaginated", (_e, offset = 0, limit = 50) => {
     const folder = memeFolder();
-    if (!fs.existsSync(folder))
-      return { memes: [], total: 0, hasMore: false };
+    if (!fs.existsSync(folder)) return { memes: [], total: 0, hasMore: false };
     const hidden = new Set(store.get("hiddenMemes") || []);
     const hiddenNames = new Set(store.get("hiddenMemeNames") || []);
     const all = scanMemeFolder(folder).filter(
-      (m) => m !== null && !hidden.has(m.path) && !hiddenNames.has(path.basename(m.path)),
+      (m) =>
+        m !== null &&
+        !hidden.has(m.path) &&
+        !hiddenNames.has(path.basename(m.path)),
     );
     const total = all.length;
     const memes = all.slice(offset, offset + limit);
     return { memes, total, hasMore: offset + limit < total };
+  });
+
+  // ── Reset all hidden memes ──────────────────────────────────────────
+  ipcMain.handle("memes:resetHidden", () => {
+    try {
+      store.set("hiddenMemes", []);
+      store.set("hiddenMemeNames", []);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  // ── Force reset all hidden/blocked state ──────────────────────────────
+  ipcMain.handle("memes:forceReset", () => {
+    try {
+      store.set("hiddenMemes", []);
+      store.set("hiddenMemeNames", []);
+      // Le dedupCache sera re-initialise au prochain sync (initDedupCache)
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
 }
 

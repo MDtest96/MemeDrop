@@ -78,16 +78,6 @@ contextBridge.exposeInMainWorld("memedrop", {
     ipcRenderer.on("library:changed", fn);
     return () => ipcRenderer.off("library:changed", fn);
   },
-  onLibraryChanged: (callback) => {
-    // Clear preview cache when library changes
-    previewCache.clear();
-    const fn = () => {
-      previewCache.clear();
-      callback();
-    };
-    ipcRenderer.on("library:changed", fn);
-    return () => ipcRenderer.off("library:changed", fn);
-  },
   onAudioPlay: (callback) => {
     const fn = (_e, filePath) => callback(filePath);
     ipcRenderer.on("audio:play", fn);
@@ -139,7 +129,10 @@ contextBridge.exposeInMainWorld("memedrop", {
   },
 
   // Drag & drop from Explorer
-  importFile: (sourcePath) => ipcRenderer.invoke("memes:importFile", sourcePath),
+  resetHiddenMemes: () => ipcRenderer.invoke("memes:resetHidden"),
+  forceReset: () => ipcRenderer.invoke("memes:forceReset"),
+  importFile: (sourcePath) =>
+    ipcRenderer.invoke("memes:importFile", sourcePath),
 
   // Folder exists check
   folderExists: () => ipcRenderer.invoke("memes:folderExists"),
