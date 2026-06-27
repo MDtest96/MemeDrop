@@ -2017,8 +2017,11 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
   sendBtn.textContent = "⏳ Envoi…";
   panelStatus.textContent = "";
 
-  // Section F: Get selected audio pairing
-  const audioPath = panelAudioSelect ? panelAudioSelect.value : null;
+  // Section F: Get selected audio — toujours re-querier le DOM
+  const getAudioPath = () => {
+    const sel = document.getElementById("panel-audio-select");
+    return sel ? sel.value || null : null;
+  };
 
   // Section G: Get volume
   const volume = currentVolume;
@@ -2038,10 +2041,13 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
       result = await window.memedrop.sendDrop({
         target,
         url: selectedMeme.url,
-        audioPath,
+        audioPath: getAudioPath(),
         caption,
         rain,
         kind: selectedMeme.kind,
+        volume,
+        duration: currentDuration,
+        showLocalPreview: idx === 0 ? localPreview : false,
         captionBelow,
       });
     } else if (selectedMeme.isCollage) {
@@ -2055,6 +2061,7 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
           rain: null,
           kind: "image",
           volume,
+          duration: currentDuration,
           showLocalPreview: false,
         });
         if (r && r.ok) sentCount++;
@@ -2065,9 +2072,10 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
         "panel-sync-audio-duration",
       )?.checked;
       let effectiveDuration = currentDuration;
-      if (syncDuration && audioPath) {
+      const selectedAudio = getAudioPath();
+      if (syncDuration && selectedAudio) {
         try {
-          const info = await window.memedrop.getAudioDuration(audioPath);
+          const info = await window.memedrop.getAudioDuration(selectedAudio);
           if (info && info.duration > 0) {
             effectiveDuration = info.duration; // Durée réelle de l'audio
           } else {
@@ -2082,7 +2090,7 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
       result = await window.memedrop.sendDrop({
         target,
         filePath: selectedMeme.path,
-        audioPath,
+        audioPath: getAudioPath(),
         caption,
         rain,
         kind: selectedMeme.kind,
@@ -2131,10 +2139,11 @@ document.getElementById("btn-send")?.addEventListener("click", async () => {
       panelStatus.textContent = "❌ Échec: " + failList.join(", ");
     }
 
-    // Section F: Persist audio pairing if selected
-    if (audioPath) {
+    // Save audio pairing
+    const sentAudioPath = getAudioPath();
+    if (sentAudioPath) {
       try {
-        await window.memedrop.setAudioPairing(selectedMeme.path, audioPath);
+        await window.memedrop.setAudioPairing(selectedMeme.path, sentAudioPath);
       } catch (e) {
         // silent
       }

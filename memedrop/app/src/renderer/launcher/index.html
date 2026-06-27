@@ -58,6 +58,9 @@
                 <button class="tb-btn" id="btn-reset-all" title="Reset complet (blacklist + resync)">
                     🔁
                 </button>
+                <button class="tb-btn" id="btn-shared-memes" title="Voir les memes synchronises">
+                    👥
+                </button>
             </div>
         </div>
 
@@ -1196,6 +1199,24 @@
             <button id="slideshow-play" class="ghost" style="font-size:20px;padding:8px 16px">⏸</button>
             <button id="slideshow-next" class="ghost" style="font-size:20px;padding:8px 16px">▶</button>
             <button id="slideshow-close" class="ghost" style="font-size:20px;padding:8px 16px">✕</button>
+        </div>
+    </div>
+
+    <!-- Shared memes modal -->
+    <div id="shared-memes-modal" class="modal hidden">
+        <div class="modal-backdrop" id="shared-memes-close"></div>
+        <div class="modal-content" style="max-width:600px">
+            <div class="modal-header">
+                <h3>👥 Memes synchronises</h3>
+                <div class="modal-close" id="btn-shared-close">✕</div>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">
+                    Cliquez sur un utilisateur pour voir ses memes dans la grille.
+                </p>
+                <div id="shared-memes-summary" style="padding:8px 12px;background:var(--bg-hover);border-radius:6px;margin-bottom:12px;font-weight:600;text-align:center"></div>
+                <div id="shared-memes-list" style="display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto"></div>
+            </div>
         </div>
     </div>
 

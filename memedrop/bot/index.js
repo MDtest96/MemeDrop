@@ -24,7 +24,10 @@ const httpServer = http.createServer((req, res) => {
   res.end();
 });
 
-const wss = new WebSocketServer({ server: httpServer, perMessageDeflate: true });
+const wss = new WebSocketServer({
+  server: httpServer,
+  perMessageDeflate: true,
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Linkage model
@@ -77,12 +80,15 @@ const memeRegistry = new Map();
 
 // Rate limiter — scope module (pas dans le callback connection !)
 const syncRateLimit = new Map(); // userId -> { count, resetAt }
-const SYNC_RATE = 10;
+const SYNC_RATE = 60;
 const SYNC_WINDOW = 60_000;
 const requestCooldown = new Map(); // userId -> timestamp
 
 function checkRateLimit(userId) {
-  const entry = syncRateLimit.get(userId) || { count: 0, resetAt: Date.now() + SYNC_WINDOW };
+  const entry = syncRateLimit.get(userId) || {
+    count: 0,
+    resetAt: Date.now() + SYNC_WINDOW,
+  };
   if (Date.now() > entry.resetAt) {
     entry.count = 0;
     entry.resetAt = Date.now() + SYNC_WINDOW;
@@ -268,7 +274,9 @@ async function pushLinksUpdate(userId) {
 
 wss.on("connection", (ws) => {
   ws.isAlive = true;
-  ws.on("pong", () => { ws.isAlive = true; });
+  ws.on("pong", () => {
+    ws.isAlive = true;
+  });
   const code = generatePairingCode();
   pendingOverlays.set(code, ws);
   wsMeta.set(ws, { code, userId: null, username: null });
@@ -548,7 +556,10 @@ wss.on("connection", (ws) => {
       if (dropMedia?.data) {
         try {
           const rawBuffer = Buffer.from(dropMedia.data, "base64");
-          refHash = crypto.createHash("sha256").update(rawBuffer.slice(0, 4096)).digest("hex");
+          refHash = crypto
+            .createHash("sha256")
+            .update(rawBuffer.slice(0, 4096))
+            .digest("hex");
         } catch {}
       }
       for (const sock of targetLink.sockets) {
@@ -600,7 +611,10 @@ wss.on("connection", (ws) => {
       if (msg.data?.buffer) {
         try {
           const rawBuffer = Buffer.from(msg.data.buffer, "base64");
-          const hash = crypto.createHash("sha256").update(rawBuffer.slice(0, 4096)).digest("hex");
+          const hash = crypto
+            .createHash("sha256")
+            .update(rawBuffer.slice(0, 4096))
+            .digest("hex");
           if (!memeRegistry.has(hash)) memeRegistry.set(hash, new Set());
           memeRegistry.get(hash).add(meta.userId);
         } catch {}
@@ -636,13 +650,21 @@ wss.on("connection", (ws) => {
     if (msg.type === "library_sync_request") {
       const meta = wsMeta.get(ws);
       if (!meta?.userId) {
-        sendJson(ws, { type: "library_sync_request_ack", ok: false, error: "Not linked" });
+        sendJson(ws, {
+          type: "library_sync_request_ack",
+          ok: false,
+          error: "Not linked",
+        });
         return;
       }
       // Anti-burst cooldown (OP-19): 5 min entre deux demandes
       const lastReq = requestCooldown.get(meta.userId) || 0;
       if (Date.now() - lastReq < 5 * 60_000) {
-        sendJson(ws, { type: "library_sync_request_ack", ok: false, error: "Cooldown" });
+        sendJson(ws, {
+          type: "library_sync_request_ack",
+          ok: false,
+          error: "Cooldown",
+        });
         return;
       }
       requestCooldown.set(meta.userId, Date.now());
@@ -652,14 +674,19 @@ wss.on("connection", (ws) => {
         if (uid !== meta.userId) {
           for (const sock of uLink.sockets) {
             if (sock.readyState === 1) {
-              sendJson(sock, { type: "library_sync_request", from: meta.userId });
+              sendJson(sock, {
+                type: "library_sync_request",
+                from: meta.userId,
+              });
               asked++;
             }
           }
         }
       }
       sendJson(ws, { type: "library_sync_request_ack", ok: true, asked });
-      console.log(`[library_sync_request] ${meta.userId} asked ${asked} user(s)`);
+      console.log(
+        `[library_sync_request] ${meta.userId} asked ${asked} user(s)`,
+      );
       return;
     }
   });

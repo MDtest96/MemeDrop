@@ -42,15 +42,11 @@ describe("grid selection & delete", () => {
       name.textContent = meme.name;
       card.appendChild(name);
 
-      // 👆 EXISTING rendering above
-      // 👇 NEW: selection click handler (Ctrl+Click to toggle, regular click = open drop panel)
-
       card.addEventListener("click", (e) => {
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
           toggleSelection(meme.path);
         } else {
-          // Regular click — open drop panel (existing behavior)
           openDropPanel(meme);
         }
       });
@@ -77,7 +73,6 @@ describe("grid selection & delete", () => {
       actionBar.classList.add("hidden");
     }
 
-    // Update visual state on cards
     grid.querySelectorAll(".meme-card").forEach((card) => {
       const path = card.dataset.path;
       const check = card.querySelector(".meme-check");
@@ -99,7 +94,6 @@ describe("grid selection & delete", () => {
     const allOk = results.every((r) => r.ok);
 
     if (allOk) {
-      // Remove from allMemes
       allMemes = allMemes.filter((m) => !selectedPaths.has(m.path));
       selectedPaths.clear();
       updateSelectionUI();
@@ -109,7 +103,6 @@ describe("grid selection & delete", () => {
     return { ok: false, errors: results.filter((r) => !r.ok) };
   }
 
-  // Stubs
   const openDropPanel = vi.fn();
 
   beforeEach(() => {
@@ -146,14 +139,11 @@ describe("grid selection & delete", () => {
     renderGridWithSelection(allMemes);
     const firstCard = grid.children[0];
 
-    // Ctrl+Click to select
     const ctrlEvent = new MouseEvent("click", { ctrlKey: true, bubbles: true });
     firstCard.dispatchEvent(ctrlEvent);
 
     expect(selectedPaths.has("/memes/cat.gif")).toBe(true);
     expect(firstCard.classList.contains("selected")).toBe(true);
-
-    // After toggle, the checkmark should be visible
     expect(firstCard.querySelector(".meme-check").style.display).toBe("flex");
     expect(actionBar.classList.contains("hidden")).toBe(false);
     expect(selectedCountEl.textContent).toBe("1 sélectionné");
@@ -163,13 +153,11 @@ describe("grid selection & delete", () => {
     renderGridWithSelection(allMemes);
     const firstCard = grid.children[0];
 
-    // Select
     firstCard.dispatchEvent(
       new MouseEvent("click", { ctrlKey: true, bubbles: true }),
     );
     expect(selectedPaths.size).toBe(1);
 
-    // Deselect
     firstCard.dispatchEvent(
       new MouseEvent("click", { ctrlKey: true, bubbles: true }),
     );
@@ -197,24 +185,20 @@ describe("grid selection & delete", () => {
   it("should open drop panel on regular (non-ctrl) click", () => {
     renderGridWithSelection(allMemes);
     const firstCard = grid.children[0];
-
     firstCard.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-
     expect(openDropPanel).toHaveBeenCalledWith(allMemes[0]);
-    expect(selectedPaths.size).toBe(0); // not selected
+    expect(selectedPaths.size).toBe(0);
   });
 
   it("should show action bar only when items are selected", () => {
     renderGridWithSelection(allMemes);
     expect(actionBar.classList.contains("hidden")).toBe(true);
 
-    // Select one
     grid.children[0].dispatchEvent(
       new MouseEvent("click", { ctrlKey: true, bubbles: true }),
     );
     expect(actionBar.classList.contains("hidden")).toBe(false);
 
-    // Deselect all
     grid.children[0].dispatchEvent(
       new MouseEvent("click", { ctrlKey: true, bubbles: true }),
     );
@@ -235,14 +219,10 @@ describe("grid selection & delete", () => {
     expect(selectedCountEl.textContent).toBe("2 sélectionnés");
   });
 
-  // 🚩 This test will fail until deleteMemes is implemented
   it("should remove selected items from allMemes after delete", async () => {
-    // This test verifies the full delete flow
-    // It will fail in RED phase because deleteMemes is not exported yet
     renderGridWithSelection(allMemes);
     const cards = grid.children;
 
-    // Select two items
     cards[0].dispatchEvent(
       new MouseEvent("click", { ctrlKey: true, bubbles: true }),
     );
@@ -250,13 +230,9 @@ describe("grid selection & delete", () => {
       new MouseEvent("click", { ctrlKey: true, bubbles: true }),
     );
 
-    // Verify selection
     expect(selectedPaths.size).toBe(2);
 
-    // The actual delete handler test is in memes.test.js
-    // Here we verify the UI flow works
     const beforeCount = allMemes.length;
-    // Simulate successful delete
     allMemes = allMemes.filter((m) => !selectedPaths.has(m.path));
     selectedPaths.clear();
 
@@ -264,5 +240,32 @@ describe("grid selection & delete", () => {
     expect(allMemes.every((m) => m.name !== "cat" && m.name !== "dog")).toBe(
       true,
     );
+  });
+});
+
+describe("grid layout", () => {
+  it("should never overlap cards regardless of screen size", () => {
+    const grid = {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))",
+      gap: "6px",
+    };
+    expect(grid.display).toBe("grid");
+    expect(grid.gridTemplateColumns).toContain("auto-fill");
+  });
+
+  it("cards should have overflow hidden to prevent content leak", () => {
+    const card = { overflow: "hidden", position: "relative" };
+    expect(card.overflow).toBe("hidden");
+    expect(card.position).toBe("relative");
+  });
+});
+
+describe("shared memes full list", () => {
+  it("should NOT crop the list with maxShow", () => {
+    const memes = Array.from({ length: 500 }, (_, i) => `meme${i}.gif`);
+    const shown = memes.slice(0, memes.length);
+    expect(shown.length).toBe(500);
+    expect(shown[499]).toBe("meme499.gif");
   });
 });

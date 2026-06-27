@@ -144,6 +144,7 @@ contextBridge.exposeInMainWorld("memedrop", {
   // Notification badge
   getUnreadDrops: () => ipcRenderer.invoke("drops:getUnread"),
   resetUnreadDrops: () => ipcRenderer.invoke("drops:resetUnread"),
+  getSyncedMemesByUser: () => ipcRenderer.invoke("synced:list"),
   onDropReceived: (callback) => {
     const fn = () => callback();
     ipcRenderer.on("drop:received", fn);

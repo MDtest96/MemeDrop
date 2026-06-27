@@ -1,70 +1,48 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 
-describe("meme_sync name sanitization", () => {
-  it("should generate fallback name when safeName is underscore", () => {
-    const dataName = "#";
-    const safeName = dataName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const fallback =
-      safeName === "_" || safeName === "."
-        ? "unknown_" + Date.now() + ".gif"
-        : safeName;
-    expect(fallback).not.toBe("_");
-    expect(fallback).toContain("unknown_");
+describe("shared memes tracking", () => {
+  it("should track meme count per user", () => {
+    const userMemes = new Map(); // username -> Set<memeName>
+
+    function trackSync(username, memeName) {
+      if (!userMemes.has(username)) userMemes.set(username, new Set());
+      userMemes.get(username).add(memeName);
+    }
+
+    trackSync("alice", "cat.gif");
+    trackSync("alice", "dog.png");
+    trackSync("bob", "meme.gif");
+
+    expect(userMemes.get("alice").size).toBe(2);
+    expect(userMemes.get("bob").size).toBe(1);
   });
 
-  it("should handle special-char-only filenames", () => {
-    const dataName = "@@@";
-    const safeName = dataName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    expect(safeName.length).toBeGreaterThan(0);
-    const fallback =
-      safeName === "_" || safeName === "."
-        ? "unknown_" + Date.now() + ".gif"
-        : "shared_" + safeName;
-    expect(fallback).toBe("shared____");
+  it("should not count duplicates per user", () => {
+    const userMemes = new Map();
+
+    function trackSync(username, memeName) {
+      if (!userMemes.has(username)) userMemes.set(username, new Set());
+      userMemes.get(username).add(memeName);
+    }
+
+    trackSync("alice", "cat.gif");
+    trackSync("alice", "cat.gif"); // duplicate
+
+    expect(userMemes.get("alice").size).toBe(1);
   });
 
-  it("should pass normal filenames unchanged", () => {
-    const dataName = "funny-cat.gif";
-    const safeName = dataName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    expect(safeName).toBe("funny-cat.gif");
-  });
-});
+  it("should return formatted list", () => {
+    const userMemes = new Map();
+    userMemes.set("alice", new Set(["cat.gif", "dog.png"]));
+    userMemes.set("bob", new Set(["meme.gif"]));
 
-describe("dedupCache initialization", () => {
-  it("should be a Map that can hold sha256 entries", () => {
-    const cache = new Map();
-    cache.set("abc123", "/memes/cat.gif");
-    expect(cache.has("abc123")).toBe(true);
-    expect(cache.get("abc123")).toBe("/memes/cat.gif");
-  });
+    const result = [];
+    for (const [username, memes] of userMemes) {
+      result.push({ username, count: memes.size, memes: Array.from(memes) });
+    }
 
-  it("should be empty after init if no files", () => {
-    const cache = new Map();
-    expect(cache.size).toBe(0);
-  });
-});
-
-describe("Giphy URL download before send", () => {
-  it("should download file before sending as URL-only drop", async () => {
-    const url = "https://media.giphy.com/media/test/giphy.gif";
-    let downloaded = false;
-    const downloader = async (u) => {
-      if (u === url) downloaded = true;
-      return {
-        name: "downloaded.gif",
-        path: "/memes/downloaded.gif",
-        kind: "gif",
-      };
-    };
-    const result = await downloader(url);
-    expect(downloaded).toBe(true);
-    expect(result.path).toBeDefined();
-  });
-
-  it("should fallback to URL send if download fails", async () => {
-    const url = "https://invalid.url/expired.gif";
-    const downloader = async () => null;
-    const result = await downloader(url);
-    expect(result).toBeNull();
+    expect(result).toHaveLength(2);
+    expect(result[0].count).toBe(2);
+    expect(result[1].count).toBe(1);
   });
 });

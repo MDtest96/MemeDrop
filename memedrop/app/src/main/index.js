@@ -353,6 +353,46 @@ let reconnectAttempts = 0;
 let unreadDrops = 0;
 const dedupCache = new Map(); // sha256 -> path (OP-3)
 
+// Track memes shared by each user
+const sharedMemesByUser = new Map(); // username -> Set<memeName>
+
+// Initialiser sharedMemesByUser depuis les tags persistes (from:username)
+(function initSharedMemes() {
+  try {
+    const allTags = store.get("tags") || {};
+    const unknownMemes = [];
+    for (const [filePath, tags] of Object.entries(allTags)) {
+      for (const tag of tags) {
+        if (tag.startsWith("from:")) {
+          const username = tag.substring(5);
+          if (!sharedMemesByUser.has(username))
+            sharedMemesByUser.set(username, new Set());
+          sharedMemesByUser.get(username).add(path.basename(filePath));
+        }
+      }
+    }
+    // Fallback : scanner les fichiers shared_ sans tag from:
+    try {
+      const memeFolder = getMemeFolder(store, app);
+      if (fs.existsSync(memeFolder)) {
+        for (const f of fs.readdirSync(memeFolder)) {
+          if (f.startsWith("shared_")) {
+            // Verifier si ce fichier deja attribue a un utilisateur
+            const tags = allTags[path.join(memeFolder, f)] || [];
+            const hasFromTag = tags.some((t) => t.startsWith("from:"));
+            if (!hasFromTag) {
+              unknownMemes.push(f);
+            }
+          }
+        }
+      }
+    } catch {}
+    if (unknownMemes.length > 0) {
+      sharedMemesByUser.set("Inconnu", new Set(unknownMemes));
+    }
+  } catch {}
+})();
+
 // Initialiser dedupCache en scannant le dossier au demarrage
 function initDedupCache(folder) {
   dedupCache.clear();
@@ -631,6 +671,12 @@ function connectWS() {
               if (!allTags[destPath]) allTags[destPath] = [];
               if (!allTags[destPath].includes("importé"))
                 allTags[destPath].push("importé");
+              // Tag persistant avec le nom de l'envoyeur
+              if (msg.from?.username) {
+                var fromTag = "from:" + msg.from.username;
+                if (!allTags[destPath].includes(fromTag))
+                  allTags[destPath].push(fromTag);
+              }
               store.set("tags", allTags);
             } catch (e) {
               console.error("[ws] failed to tag imported meme:", e.message);
@@ -645,6 +691,13 @@ function connectWS() {
                   from: msg.from,
                 });
               }
+            }
+            // Track shared memes by user (stocke le nom complet avec extension)
+            if (msg.from?.username) {
+              const username = msg.from.username;
+              if (!sharedMemesByUser.has(username))
+                sharedMemesByUser.set(username, new Set());
+              sharedMemesByUser.get(username).add(filename);
             }
             notifyLibraryChanged();
           } else if (data.url) {
@@ -1105,6 +1158,19 @@ if (!gotLock) {
     }
   });
 
+  // ── List synced memes by user ─────────────────────────────────────────
+  ipcMain.handle("synced:list", () => {
+    try {
+      const result = [];
+      for (const [username, memes] of sharedMemesByUser) {
+        result.push({ username, count: memes.size, memes: Array.from(memes) });
+      }
+      return { ok: true, users: result, memeFolder: getMemeFolder(store, app) };
+    } catch (err) {
+      return { ok: false, error: err.message, users: [] };
+    }
+  });
+
   // ── Increment unread on each received drop ─────────────────────────────
   // (handled directly in the ws.on("message") handler inside connectWS)
 
@@ -1286,6 +1352,8 @@ ipcMain.handle("memes:syncAll", async (_e, force) => {
       };
       ws.send(JSON.stringify({ type: "meme_sync", data }));
       synced++;
+      // Delai entre chaque envoi pour respecter le rate limit du bot (60/min = 1s d'intervalle)
+      await new Promise((r) => setTimeout(r, 1500));
     }
 
     console.log("[memes:syncAll] synced", synced, "memes");
@@ -1440,6 +1508,7 @@ async function handleDropSend(payload) {
     target: payload.target,
     caption: payload.caption || null,
     captionBelow: payload.captionBelow || false,
+    duration: payload.duration || null,
     rain: payload.rain || null,
     music: null,
     media: null,
@@ -1520,11 +1589,25 @@ async function handleDropSend(payload) {
       name: `collage_${Date.now()}.jpg`,
       size: collage.buffer.length,
     };
+    // Handle audio for collage too
+    if (payload.audioPath) {
+      try {
+        const ext = path.extname(payload.audioPath).toLowerCase();
+        let mime = "audio/mpeg";
+        if (ext === ".wav") mime = "audio/wav";
+        else if (ext === ".ogg") mime = "audio/ogg";
+        const data = await fs.promises.readFile(payload.audioPath, "base64");
+        msg.music = { name: path.basename(payload.audioPath), kind: "audio", mime, data };
+      } catch (err) {
+        console.error("[drop:send] audio error:", err.message);
+      }
+    }
   } else {
     // --- File mode (local memes) ---
     const fp = await formatQuickDropPayload(payload);
     msg.media = fp.media;
     msg.music = fp.music;
+    if (fp.duration) msg.duration = fp.duration;
     if (fp.warning) msg.warning = fp.warning;
   }
 

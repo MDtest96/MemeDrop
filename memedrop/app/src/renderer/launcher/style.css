@@ -310,6 +310,9 @@ body {
     border: 2px solid transparent;
     transition:
         border-color 0.15s,
+        transform 0.15s;
+    transition:
+        border-color 0.15s,
         transform 0.12s;
 }
 .meme-card:hover {
@@ -1544,7 +1547,7 @@ input[type="range"]::-webkit-slider-thumb {
     transition: all 0.12s;
 }
 .blacklist-item .delete-btn:hover {
-    background: rgba(255,94,138,0.1);
+    background: rgba(255, 94, 138, 0.1);
     border-color: #ff5e8a;
 }
 .blacklist-empty {
@@ -1564,5 +1567,5 @@ input[type="range"]::-webkit-slider-thumb {
     transition: all 0.15s;
 }
 .danger-btn:hover {
-    background: rgba(255,94,138,0.15);
+    background: rgba(255, 94, 138, 0.15);
 }
